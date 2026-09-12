@@ -22,7 +22,7 @@ from psv_engine.unit_converter import (
 )
 
 APP_TITLE = "Instrument Sizing"
-APP_VERSION = "Web 1.0.1"
+APP_VERSION = "Web 1.1.0"
 
 COMPONENTS = [
     "C1 (Methane)", "N2 (Nitrogen)", "CO2", "C2 (Ethane)", "C3 (Propane)",
@@ -39,24 +39,173 @@ st.set_page_config(page_title=APP_TITLE, page_icon="📐", layout="wide", initia
 st.markdown(
     """
 <style>
-    .block-container {padding-top: 1.35rem; padding-bottom: 3rem; max-width: 1500px;}
-    [data-testid="stSidebar"] {border-right: 1px solid #D7DEE8;}
-    .brand {background: linear-gradient(135deg,#0B1F33,#163B62); color:white; padding:1.2rem 1.35rem; border-radius:16px; margin-bottom:1rem;}
-    .brand h1 {font-size:1.65rem; margin:0 0 .15rem 0; color:white;}
-    .brand p {margin:0; opacity:.82; font-size:.88rem;}
-    .hero {background:linear-gradient(135deg,#0B1F33 0%,#1769E0 100%); color:white; padding:2.2rem 2.4rem; border-radius:22px; margin-bottom:1.3rem; box-shadow:0 10px 28px rgba(11,31,51,.15)}
-    .hero h1 {font-size:2.5rem; margin:0; color:white;}
-    .hero .desc {opacity:.82; max-width:850px; margin-top:1rem;}
-    .module-card {background:white; border:1px solid #D7DEE8; border-radius:16px; padding:1.15rem 1.2rem; min-height:165px; box-shadow:0 3px 12px rgba(15,23,42,.04)}
-    .module-card h3 {margin:.15rem 0 .55rem 0; font-size:1.12rem;}
-    .module-card p {color:#667085; font-size:.91rem;}
-    .section-title {font-size:1.55rem; font-weight:750; color:#0B1F33; margin-bottom:.1rem}
-    .section-sub {color:#667085; margin-bottom:1rem}
-    div[data-testid="stMetric"] {background:white; border:1px solid #D7DEE8; padding:.75rem 1rem; border-radius:14px;}
-    div[data-testid="stForm"] {background:white; border:1px solid #D7DEE8; border-radius:16px; padding:1rem 1rem .4rem 1rem;}
-    .status-ok {padding:.7rem 1rem; border-radius:10px; background:#EAF7F1; border:1px solid #79C8A7; color:#075E45;}
-    .status-warn {padding:.7rem 1rem; border-radius:10px; background:#FFF7E8; border:1px solid #F3C66B; color:#7A4C00;}
-    .footnote {color:#667085; font-size:.82rem; margin-top:1.4rem;}
+    :root {
+        --is-radius-lg: 22px;
+        --is-radius-md: 16px;
+        --is-shadow: 0 18px 45px rgba(15, 23, 42, .10);
+        --is-border: color-mix(in srgb, var(--text-color) 14%, transparent);
+        --is-muted: color-mix(in srgb, var(--text-color) 68%, transparent);
+        --is-soft: color-mix(in srgb, var(--secondary-background-color) 88%, var(--primary-color) 12%);
+    }
+
+    /* App shell */
+    [data-testid="stAppViewContainer"] {
+        background:
+            radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--primary-color) 16%, transparent), transparent 28rem),
+            radial-gradient(circle at 100% 18%, rgba(0, 190, 255, .08), transparent 30rem),
+            var(--background-color);
+    }
+    [data-testid="stHeader"] {background: transparent;}
+    .block-container {padding-top: 1.1rem; padding-bottom: 4rem; max-width: 1480px;}
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #07182a 0%, #0a223a 55%, #071727 100%);
+        border-right: 1px solid rgba(148, 163, 184, .18);
+    }
+    [data-testid="stSidebar"] * {color: #e7f0fa;}
+    [data-testid="stSidebar"] [role="radiogroup"] label {
+        padding: .55rem .65rem;
+        border-radius: 12px;
+        margin: .12rem 0;
+        transition: all .18s ease;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] label:hover {
+        background: rgba(255,255,255,.07);
+        transform: translateX(2px);
+    }
+    .brand {
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(135deg, #0d3155 0%, #125dc1 62%, #12a4d9 100%);
+        color:white;
+        padding:1.25rem 1.15rem;
+        border-radius:18px;
+        margin:.35rem 0 1rem 0;
+        box-shadow: 0 16px 34px rgba(0, 85, 170, .26);
+    }
+    .brand:after {
+        content:""; position:absolute; width:120px; height:120px; border-radius:50%;
+        right:-48px; top:-52px; background:rgba(255,255,255,.10);
+    }
+    .brand .eyebrow {font-size:.69rem; letter-spacing:.16em; font-weight:800; opacity:.72; text-transform:uppercase;}
+    .brand h1 {font-size:1.42rem; margin:.18rem 0 .18rem 0; color:white; letter-spacing:.02em;}
+    .brand p {margin:0; opacity:.78; font-size:.80rem;}
+
+    /* Header / hero */
+    .hero {
+        position:relative; overflow:hidden;
+        background: linear-gradient(130deg,#071a2d 0%,#0d3f73 42%,#1769e0 78%,#00a7d8 115%);
+        color:white;
+        padding:2.45rem 2.5rem;
+        border-radius:28px;
+        margin:.2rem 0 1.25rem 0;
+        box-shadow:0 24px 55px rgba(0,73,155,.22);
+        border:1px solid rgba(255,255,255,.10);
+    }
+    .hero:before, .hero:after {content:""; position:absolute; border-radius:999px; background:rgba(255,255,255,.08);}
+    .hero:before {width:320px;height:320px;right:-100px;top:-180px;}
+    .hero:after {width:200px;height:200px;right:140px;bottom:-150px;}
+    .hero-kicker {display:inline-flex;align-items:center;gap:.45rem;padding:.38rem .72rem;border:1px solid rgba(255,255,255,.23);border-radius:999px;background:rgba(255,255,255,.08);font-size:.76rem;font-weight:750;letter-spacing:.08em;text-transform:uppercase;}
+    .hero h1 {font-size:clamp(2.25rem,5vw,4rem);line-height:.96;margin:.85rem 0 .4rem 0;color:white;letter-spacing:-.035em;}
+    .hero .desc {opacity:.84; max-width:880px; margin-top:.85rem; font-size:1.03rem; line-height:1.65;}
+    .hero-chips {display:flex;gap:.55rem;flex-wrap:wrap;margin-top:1.25rem;}
+    .hero-chip {padding:.42rem .72rem;border-radius:999px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.15);font-size:.78rem;font-weight:650;}
+
+    /* Page section headers */
+    .page-head {
+        display:flex; align-items:flex-start; gap:.95rem;
+        padding:1.15rem 1.25rem;
+        margin:.2rem 0 1.1rem 0;
+        background: color-mix(in srgb, var(--secondary-background-color) 91%, transparent);
+        border:1px solid var(--is-border);
+        border-radius:18px;
+        box-shadow:0 8px 28px rgba(15,23,42,.05);
+        backdrop-filter: blur(10px);
+    }
+    .page-icon {width:44px;height:44px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#1769e0,#00a7d8);box-shadow:0 8px 18px rgba(23,105,224,.24);font-size:1.2rem;flex:0 0 auto;}
+    .section-title {font-size:1.55rem;font-weight:800;color:var(--text-color);margin:0;letter-spacing:-.02em;}
+    .section-sub {color:var(--is-muted);margin:.2rem 0 0 0;line-height:1.5;font-size:.92rem;}
+
+    /* Welcome module cards */
+    .module-card {
+        position:relative; overflow:hidden;
+        background: color-mix(in srgb, var(--secondary-background-color) 95%, transparent);
+        border:1px solid var(--is-border);
+        border-radius:20px;
+        padding:1.25rem 1.2rem 1.15rem;
+        min-height:190px;
+        box-shadow:0 10px 28px rgba(15,23,42,.06);
+        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    }
+    .module-card:hover {transform:translateY(-3px);box-shadow:0 18px 38px rgba(15,23,42,.11);border-color:color-mix(in srgb,var(--primary-color) 42%,transparent);}
+    .module-card .mod-icon {width:44px;height:44px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#1769e0,#00a7d8);color:white;font-size:1.25rem;margin-bottom:.9rem;box-shadow:0 9px 19px rgba(23,105,224,.23);}
+    .module-card h3 {margin:.15rem 0 .5rem 0;font-size:1.1rem;color:var(--text-color);}
+    .module-card p {color:var(--is-muted);font-size:.88rem;line-height:1.48;margin:0;}
+    .module-card .mod-tag {display:inline-block;margin-top:.8rem;padding:.25rem .5rem;border-radius:8px;background:var(--is-soft);font-size:.70rem;font-weight:700;color:var(--text-color);}
+
+    .workflow {
+        display:grid;grid-template-columns:repeat(4,1fr);gap:.7rem;
+        background:color-mix(in srgb,var(--secondary-background-color) 93%,transparent);
+        border:1px solid var(--is-border);border-radius:18px;padding:.9rem;margin:1.1rem 0;
+    }
+    .workflow-item {padding:.55rem .65rem;border-radius:12px;background:color-mix(in srgb,var(--background-color) 55%,transparent);}
+    .workflow-item b {display:block;font-size:.78rem;margin-bottom:.13rem;}
+    .workflow-item span {font-size:.73rem;color:var(--is-muted);}
+
+    /* Streamlit native components */
+    div[data-testid="stMetric"] {
+        background: color-mix(in srgb, var(--secondary-background-color) 95%, transparent);
+        border:1px solid var(--is-border);
+        padding:.85rem 1rem;
+        border-radius:16px;
+        box-shadow:0 8px 22px rgba(15,23,42,.05);
+    }
+    div[data-testid="stMetric"] label {color:var(--is-muted)!important;font-weight:650!important;}
+    div[data-testid="stMetricValue"] {font-weight:800;letter-spacing:-.02em;}
+    div[data-testid="stForm"] {
+        background: color-mix(in srgb, var(--secondary-background-color) 96%, transparent);
+        border:1px solid var(--is-border);
+        border-radius:18px;
+        padding:1.05rem 1.05rem .55rem 1.05rem;
+        box-shadow:0 10px 30px rgba(15,23,42,.05);
+    }
+    div[data-testid="stDataFrame"] {border:1px solid var(--is-border);border-radius:16px;overflow:hidden;}
+    [data-testid="stExpander"] {border:1px solid var(--is-border)!important;border-radius:14px!important;background:color-mix(in srgb,var(--secondary-background-color) 95%,transparent)!important;}
+    .stButton > button, .stFormSubmitButton > button {
+        border-radius:12px!important;
+        font-weight:750!important;
+        min-height:2.75rem;
+        transition:transform .15s ease, box-shadow .15s ease!important;
+    }
+    .stButton > button:hover, .stFormSubmitButton > button:hover {transform:translateY(-1px);box-shadow:0 8px 18px rgba(23,105,224,.18)!important;}
+    button[kind="primary"] {background:linear-gradient(135deg,#1769e0,#008fd5)!important;border:0!important;}
+    [data-baseweb="tab-list"] {gap:.35rem;background:color-mix(in srgb,var(--secondary-background-color) 92%,transparent);padding:.35rem;border-radius:14px;border:1px solid var(--is-border);}
+    [data-baseweb="tab"] {border-radius:10px;padding:.55rem .85rem;}
+    [data-baseweb="tab"][aria-selected="true"] {background:color-mix(in srgb,var(--primary-color) 15%,transparent);}
+
+    /* Alerts */
+    .status-ok {padding:.75rem 1rem;border-radius:12px;background:rgba(18,183,106,.10);border:1px solid rgba(18,183,106,.30);color:var(--text-color);}
+    .status-warn {padding:.75rem 1rem;border-radius:12px;background:rgba(247,144,9,.10);border:1px solid rgba(247,144,9,.30);color:var(--text-color);}
+    .footnote {color:var(--is-muted);font-size:.80rem;margin-top:1.4rem;}
+    .footer-line {margin-top:2rem;padding-top:1rem;border-top:1px solid var(--is-border);color:var(--is-muted);font-size:.76rem;text-align:center;}
+
+    @media (max-width: 900px) {
+        .block-container {padding:.65rem .7rem 3.5rem .7rem;}
+        .hero {padding:1.55rem 1.25rem;border-radius:21px;}
+        .hero h1 {font-size:2.35rem;}
+        .hero .desc {font-size:.91rem;line-height:1.5;}
+        .module-card {min-height:0;padding:1rem;}
+        .workflow {grid-template-columns:1fr 1fr;}
+        .page-head {padding:.9rem;border-radius:15px;}
+    }
+    @media (max-width: 520px) {
+        .workflow {grid-template-columns:1fr;}
+        .hero-chips {gap:.35rem;}
+        .hero-chip {font-size:.70rem;}
+        .section-title {font-size:1.28rem;}
+        .page-icon {width:39px;height:39px;}
+    }
 </style>
 """,
     unsafe_allow_html=True,
@@ -127,7 +276,16 @@ def solve_orifice_reference(v, target_qv, downstream=False):
 
 
 def page_header(title, subtitle):
-    st.markdown(f'<div class="section-title">{title}</div><div class="section-sub">{subtitle}</div>', unsafe_allow_html=True)
+    icon_map = {
+        "AGA 3": "◫", "AGA 8": "⬡", "Control Valve": "◉",
+        "PSV": "◆", "About": "i",
+    }
+    icon = next((v for k, v in icon_map.items() if title.startswith(k)), "▣")
+    st.markdown(
+        f'<div class="page-head"><div class="page-icon">{icon}</div>'
+        f'<div><div class="section-title">{title}</div><div class="section-sub">{subtitle}</div></div></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def goto(page):
@@ -140,33 +298,65 @@ if "nav_request" in st.session_state:
     st.session_state["page"] = st.session_state.pop("nav_request")
 
 PAGES = ["Welcome", "AGA 3 — Orifice Flow", "AGA 8 — Gas Properties", "Control Valve Sizing", "PSV Engineering", "About / Method"]
+NAV_LABELS = {
+    "Welcome": "⌂  Home",
+    "AGA 3 — Orifice Flow": "◫  AGA 3 · Orifice Flow",
+    "AGA 8 — Gas Properties": "⬡  AGA 8 · Gas Properties",
+    "Control Valve Sizing": "◉  Control Valve Sizing",
+    "PSV Engineering": "◆  PSV Engineering",
+    "About / Method": "ⓘ  About / Method",
+}
 with st.sidebar:
-    st.markdown(f'<div class="brand"><h1>{APP_TITLE}</h1><p>{APP_VERSION}</p></div>', unsafe_allow_html=True)
-    page = st.radio("Navigation", PAGES, key="page", label_visibility="collapsed")
+    st.markdown(
+        f'<div class="brand"><div class="eyebrow">Engineering Toolkit</div><h1>{APP_TITLE}</h1><p>{APP_VERSION}</p></div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("NAVIGATION")
+    page = st.radio("Navigation", PAGES, key="page", label_visibility="collapsed", format_func=lambda x: NAV_LABELS[x])
     st.divider()
-    st.caption("Engineering calculation aid. Final design and vendor selection should be checked against the applicable project standards and certified data.")
+    st.caption("Calculation aid for engineering screening and sizing. Verify final design against project standards and certified vendor data.")
 
 
 if page == "Welcome":
     st.markdown(
-        f'<div class="hero"><h1>INSTRUMENT SIZING</h1>'
-        '<div class="desc">A browser-based engineering calculator for gas metering, gas properties, control valves, and pressure safety valves. Use it from Windows, macOS, tablet, or phone after deployment.</div></div>',
+        '<div class="hero">'
+        '<div class="hero-kicker">●  Process & Instrument Engineering</div>'
+        '<h1>INSTRUMENT<br>SIZING</h1>'
+        '<div class="desc">One workspace for gas metering, gas properties, control valve sizing, and pressure safety valve engineering. Designed for fast calculations on desktop, tablet, and mobile.</div>'
+        '<div class="hero-chips"><span class="hero-chip">AGA 3</span><span class="hero-chip">AGA 8 DETAIL</span><span class="hero-chip">Control Valve</span><span class="hero-chip">PSV Engineering</span></div>'
+        '</div>',
         unsafe_allow_html=True,
     )
+
+    st.markdown('<div class="workflow">'
+                '<div class="workflow-item"><b>01 · Enter</b><span>Process & equipment data</span></div>'
+                '<div class="workflow-item"><b>02 · Calculate</b><span>Run the selected sizing model</span></div>'
+                '<div class="workflow-item"><b>03 · Review</b><span>Check limits and engineering flags</span></div>'
+                '<div class="workflow-item"><b>04 · Transfer</b><span>Reuse results across modules</span></div>'
+                '</div>', unsafe_allow_html=True)
+
     c1, c2, c3, c4 = st.columns(4)
     cards = [
-        (c1, "AGA 3", "Orifice gas flow or inverse sizing of the required orifice bore.", "AGA 3 — Orifice Flow"),
-        (c2, "AGA 8 DETAIL", "Compressibility factor, flowing/base density, MW and Fpv from gas composition.", "AGA 8 — Gas Properties"),
-        (c3, "Control Valve", "Liquid, gas and steam Cv/Kv sizing with representative valve series.", "Control Valve Sizing"),
-        (c4, "PSV Engineering", "Gas, steam, liquid, two-phase, fire, thermal and piping checks.", "PSV Engineering"),
+        (c1, "◫", "AGA 3", "Orifice gas flow and inverse bore sizing with discharge-coefficient checks.", "Metering", "AGA 3 — Orifice Flow"),
+        (c2, "⬡", "AGA 8 DETAIL", "Z-factor, gas density, molecular weight and Fpv from 21-component composition.", "Gas properties", "AGA 8 — Gas Properties"),
+        (c3, "◉", "Control Valve", "Liquid, gas and steam Cv/Kv sizing with choked-flow and valve checks.", "IEC / ISA", "Control Valve Sizing"),
+        (c4, "◆", "PSV Engineering", "Relief sizing, scenario comparison, API orifice selection and piping checks.", "Relief systems", "PSV Engineering"),
     ]
-    for col, title, desc, target in cards:
+    for col, icon, title, desc, tag, target in cards:
         with col:
-            st.markdown(f'<div class="module-card"><h3>{title}</h3><p>{desc}</p></div>', unsafe_allow_html=True)
-            if st.button(f"Open {title}", key=f"go_{target}", use_container_width=True):
+            st.markdown(
+                f'<div class="module-card"><div class="mod-icon">{icon}</div><h3>{title}</h3><p>{desc}</p><span class="mod-tag">{tag}</span></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button(f"Open {title}  →", key=f"go_{target}", use_container_width=True):
                 goto(target)
-    st.info("Tip: AGA 8 results can be transferred directly into AGA 3 and the gas Control Valve calculator during the same browser session.")
 
+    st.markdown("### Connected workflow")
+    a, b = st.columns([1.25, .75])
+    with a:
+        st.info("**AGA 8 → AGA 3 / Control Valve** · Calculate gas properties once, then transfer temperature, pressure, density, MW and Z directly into downstream sizing modules during the same session.")
+    with b:
+        st.markdown('<div class="status-ok"><b>✓ Ready for engineering calculations</b><br><span style="font-size:.82rem;opacity:.75">Select a module above or use the navigation panel.</span></div>', unsafe_allow_html=True)
 
 elif page == "AGA 3 — Orifice Flow":
     page_header("AGA 3 — Orifice Flow", "Calculate base flow from a known bore, or solve the reference orifice diameter for a target base flow.")
@@ -542,3 +732,6 @@ Browser-session values are kept in Streamlit session state. They are not a subst
     st.download_button("Download current calculation snapshot (JSON)",json.dumps(project_snapshot,indent=2,default=str),"instrument_sizing_snapshot.json","application/json")
 
 st.markdown(f'<div class="footnote">{APP_TITLE} · {APP_VERSION}</div>', unsafe_allow_html=True)
+
+
+st.markdown(f'<div class="footer-line">{APP_TITLE} · {APP_VERSION} · Engineering Calculation Aid</div>', unsafe_allow_html=True)
