@@ -1,0 +1,13 @@
+CONTROL VALVE SIZING MODULE
+
+The control-valve calculation core in this Instrument Sizing build is adapted
+from the Control-Valve-Sizing repository supplied by the user in this chat.
+The supplied repository describes its sizing engine as IEC 60534 / ISA based
+and includes liquid, gas and steam sizing, vendor valve series, noise and
+actuator-thrust helpers.
+
+For this Windows integration, the steam property path was simplified to use
+IAPWS when installed and an ideal-gas fallback otherwise, avoiding mandatory
+CoolProp/thermo/chemicals dependencies. Final safety-critical valve selection
+must still be checked against the applicable project standard, valve vendor
+sizing software and certified valve data.

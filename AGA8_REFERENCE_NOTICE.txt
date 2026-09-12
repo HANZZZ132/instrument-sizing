@@ -1,0 +1,14 @@
+AGA 8 DETAIL REFERENCE NOTICE
+=============================
+The AGA8 DETAIL calculation engine in aga8_detail.py was implemented for this
+application from the publicly available NIST AGA8 reference formulation and
+program structure. The original user-supplied aga8.py is retained in the
+package but its unfinished DDETAIL/ZDETAIL routines are not used for production
+calculation in the UI.
+
+Reference project:
+NIST AGA8 supplementary code, AGA 8 Part 1 DETAIL equation of state.
+https://pages.nist.gov/AGA8/
+
+Validation values used in self_test.py are published AGA8 program-verification
+values and the NIST reference-mixture example.
