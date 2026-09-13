@@ -9,6 +9,7 @@ import streamlit as st
 
 import AGA3
 import aga8_detail
+import electrical_engine as electrical
 
 from psv_engine.gas_relief import calculate_gas_relief_area
 from psv_engine.liquid_relief import calculate_liquid_relief_area
@@ -22,7 +23,7 @@ from psv_engine.unit_converter import (
 )
 
 APP_TITLE = "Instrument Sizing"
-APP_VERSION = "Web 1.1.0"
+APP_VERSION = "Web 1.2.4"
 
 COMPONENTS = [
     "C1 (Methane)", "N2 (Nitrogen)", "CO2", "C2 (Ethane)", "C3 (Propane)",
@@ -217,6 +218,48 @@ def _default(key, value):
         st.session_state[key] = value
 
 
+def inject_suite_theme(active_suite: str):
+    if active_suite == "Electrical":
+        css = """
+        <style>
+            [data-testid="stAppViewContainer"] {
+                background:
+                    radial-gradient(circle at 15% 10%, rgba(255, 193, 7, .16), transparent 24rem),
+                    radial-gradient(circle at 92% 6%, rgba(0, 229, 255, .14), transparent 26rem),
+                    linear-gradient(135deg, rgba(255,193,7,.045) 0%, transparent 32%),
+                    repeating-linear-gradient(135deg, rgba(255,193,7,.035) 0px, rgba(255,193,7,.035) 2px, transparent 2px, transparent 18px),
+                    var(--background-color);
+            }
+            [data-testid="stSidebar"] {background: linear-gradient(180deg, #16120a 0%, #241a08 48%, #111820 100%);}
+            .brand {background: linear-gradient(135deg, #3a2904 0%, #9a6b00 52%, #f0a500 100%); box-shadow: 0 16px 34px rgba(173, 112, 0, .28);}
+            .hero {background: linear-gradient(130deg,#17120b 0%,#5b4307 40%,#e59d00 76%,#ffd54f 115%); box-shadow:0 24px 55px rgba(131,90,0,.24);}
+            .page-icon, .module-card .mod-icon {background: linear-gradient(135deg,#8e6200,#f0a500); box-shadow:0 8px 18px rgba(173,112,0,.24);}
+            button[kind="primary"] {background: linear-gradient(135deg,#8e6200,#f0a500)!important;}
+            .suite-badge {background: linear-gradient(135deg,#fff7e1,#fff2bf); border:1px solid rgba(240,165,0,.28); color:#6e5000;}
+        </style>
+        """
+    else:
+        css = """
+        <style>
+            [data-testid="stAppViewContainer"] {
+                background:
+                    radial-gradient(circle at 8% 0%, rgba(23, 105, 224, .14), transparent 28rem),
+                    radial-gradient(circle at 100% 18%, rgba(0, 190, 255, .10), transparent 30rem),
+                    linear-gradient(135deg, rgba(0,167,216,.035) 0%, transparent 33%),
+                    repeating-linear-gradient(135deg, rgba(23,105,224,.03) 0px, rgba(23,105,224,.03) 2px, transparent 2px, transparent 18px),
+                    var(--background-color);
+            }
+            [data-testid="stSidebar"] {background: linear-gradient(180deg, #07182a 0%, #0a223a 55%, #071727 100%);}
+            .brand {background: linear-gradient(135deg, #0d3155 0%, #125dc1 62%, #12a4d9 100%); box-shadow: 0 16px 34px rgba(0, 85, 170, .26);}
+            .hero {background: linear-gradient(130deg,#071a2d 0%,#0d3f73 42%,#1769e0 78%,#00a7d8 115%); box-shadow:0 24px 55px rgba(0,73,155,.22);}
+            .page-icon, .module-card .mod-icon {background: linear-gradient(135deg,#1769e0,#00a7d8); box-shadow:0 8px 18px rgba(23,105,224,.24);}
+            button[kind="primary"] {background: linear-gradient(135deg,#1769e0,#008fd5)!important;}
+            .suite-badge {background: linear-gradient(135deg,#e9f4ff,#def7ff); border:1px solid rgba(23,105,224,.20); color:#0b4674;}
+        </style>
+        """
+    st.markdown(css, unsafe_allow_html=True)
+
+
 def _fmt(v, digits=6):
     if v is None:
         return "—"
@@ -278,7 +321,7 @@ def solve_orifice_reference(v, target_qv, downstream=False):
 def page_header(title, subtitle):
     icon_map = {
         "AGA 3": "◫", "AGA 8": "⬡", "Control Valve": "◉",
-        "PSV": "◆", "About": "i",
+        "Electrical": "⚡", "PSV": "◆", "About": "i",
     }
     icon = next((v for k, v in icon_map.items() if title.startswith(k)), "▣")
     st.markdown(
@@ -288,75 +331,135 @@ def page_header(title, subtitle):
     )
 
 
-def goto(page):
+def goto(page, suite=None):
+    if suite is not None:
+        st.session_state["suite"] = suite
     st.session_state["nav_request"] = page
     st.rerun()
 
+
+_default("suite", "Instrument")
 
 # Handle requests from welcome-page buttons before rendering sidebar navigation.
 if "nav_request" in st.session_state:
     st.session_state["page"] = st.session_state.pop("nav_request")
 
-PAGES = ["Welcome", "AGA 3 — Orifice Flow", "AGA 8 — Gas Properties", "Control Valve Sizing", "PSV Engineering", "About / Method"]
+INSTRUMENT_PAGES = ["Welcome", "AGA 3 — Orifice Flow", "AGA 8 — Gas Properties", "Control Valve Sizing", "PSV Engineering", "About / Method"]
+ELECTRICAL_PAGES = ["Welcome", "Electrical Sizing", "About / Method"]
 NAV_LABELS = {
     "Welcome": "⌂  Home",
     "AGA 3 — Orifice Flow": "◫  AGA 3 · Orifice Flow",
     "AGA 8 — Gas Properties": "⬡  AGA 8 · Gas Properties",
     "Control Valve Sizing": "◉  Control Valve Sizing",
+    "Electrical Sizing": "⚡  Electrical Sizing",
     "PSV Engineering": "◆  PSV Engineering",
     "About / Method": "ⓘ  About / Method",
 }
+SUITE_LABELS = {"Instrument": "🧪  Instrument", "Electrical": "⚡  Electrical"}
+suite = st.session_state.get("suite", "Instrument")
+PAGES = INSTRUMENT_PAGES if suite == "Instrument" else ELECTRICAL_PAGES
+if st.session_state.get("page") not in PAGES:
+    st.session_state["page"] = "Welcome"
 with st.sidebar:
     st.markdown(
         f'<div class="brand"><div class="eyebrow">Engineering Toolkit</div><h1>{APP_TITLE}</h1><p>{APP_VERSION}</p></div>',
         unsafe_allow_html=True,
     )
+    st.caption("WORKSPACE")
+    suite = st.radio("Workspace", ["Instrument", "Electrical"], key="suite", label_visibility="collapsed", format_func=lambda x: SUITE_LABELS[x])
+    PAGES = INSTRUMENT_PAGES if suite == "Instrument" else ELECTRICAL_PAGES
+    if st.session_state.get("page") not in PAGES:
+        st.session_state["page"] = "Welcome"
+    st.divider()
     st.caption("NAVIGATION")
     page = st.radio("Navigation", PAGES, key="page", label_visibility="collapsed", format_func=lambda x: NAV_LABELS[x])
     st.divider()
     st.caption("Calculation aid for engineering screening and sizing. Verify final design against project standards and certified vendor data.")
 
+inject_suite_theme(suite)
 
 if page == "Welcome":
+    if st.session_state.get("suite", "Instrument") == "Instrument":
+        hero_kicker = "●  Process & Instrument Engineering"
+        hero_title = "INSTRUMENT<br>SIZING"
+        hero_desc = "A process-and-instrument focused workspace with a more instrument-dominant visual identity: control valve, PSV, metering orifice, pressure gauge, and PLC vibes. The modules remain focused on AGA 3, AGA 8, Control Valve sizing, and PSV engineering."
+        hero_chips = '<span class="hero-chip">Control Valve</span><span class="hero-chip">PSV</span><span class="hero-chip">Metering Orifice</span><span class="hero-chip">Gauge</span><span class="hero-chip">PLC</span>'
+        active_badge = "🧪 Instrument Workspace Active · Control Valve · PSV · Metering · Gauge · PLC"
+    else:
+        hero_kicker = "●  Electrical Engineering Workspace"
+        hero_title = "ELECTRICAL<br>SIZING"
+        hero_desc = "A dedicated electrical workspace with a stronger electrical identity: lightning, cable systems, and panel-board / switchboard vibes. The calculation content remains focused on cable sizing, voltage drop, grounding, step and touch voltage, grounding grid, and lightning-protection earthing."
+        hero_chips = '<span class="hero-chip">Lightning</span><span class="hero-chip">Cable</span><span class="hero-chip">Panels</span><span class="hero-chip">Grounding</span><span class="hero-chip">Electrical Theme</span>'
+        active_badge = "⚡ Electrical Workspace Active · Lightning · Cable · Panels"
+
     st.markdown(
-        '<div class="hero">'
-        '<div class="hero-kicker">●  Process & Instrument Engineering</div>'
-        '<h1>INSTRUMENT<br>SIZING</h1>'
-        '<div class="desc">One workspace for gas metering, gas properties, control valve sizing, and pressure safety valve engineering. Designed for fast calculations on desktop, tablet, and mobile.</div>'
-        '<div class="hero-chips"><span class="hero-chip">AGA 3</span><span class="hero-chip">AGA 8 DETAIL</span><span class="hero-chip">Control Valve</span><span class="hero-chip">PSV Engineering</span></div>'
-        '</div>',
+        f'<div class="hero">'
+        f'<div class="hero-kicker">{hero_kicker}</div>'
+        f'<h1>{hero_title}</h1>'
+        f'<div class="desc">{hero_desc}</div>'
+        f'<div class="hero-chips">{hero_chips}</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
+    st.markdown(f'<div class="suite-badge" style="padding:.75rem 1rem;border-radius:14px;margin:.2rem 0 1rem 0;font-weight:750;">{active_badge}</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="workflow">'
-                '<div class="workflow-item"><b>01 · Enter</b><span>Process & equipment data</span></div>'
-                '<div class="workflow-item"><b>02 · Calculate</b><span>Run the selected sizing model</span></div>'
-                '<div class="workflow-item"><b>03 · Review</b><span>Check limits and engineering flags</span></div>'
-                '<div class="workflow-item"><b>04 · Transfer</b><span>Reuse results across modules</span></div>'
+                '<div class="workflow-item"><b>01 · Choose</b><span>Select Instrument or Electrical</span></div>'
+                '<div class="workflow-item"><b>02 · Enter</b><span>Fill in equipment and process data</span></div>'
+                '<div class="workflow-item"><b>03 · Calculate</b><span>Run the selected sizing model</span></div>'
+                '<div class="workflow-item"><b>04 · Review</b><span>Check outputs and engineering flags</span></div>'
                 '</div>', unsafe_allow_html=True)
 
-    c1, c2, c3, c4 = st.columns(4)
-    cards = [
-        (c1, "◫", "AGA 3", "Orifice gas flow and inverse bore sizing with discharge-coefficient checks.", "Metering", "AGA 3 — Orifice Flow"),
-        (c2, "⬡", "AGA 8 DETAIL", "Z-factor, gas density, molecular weight and Fpv from 21-component composition.", "Gas properties", "AGA 8 — Gas Properties"),
-        (c3, "◉", "Control Valve", "Liquid, gas and steam Cv/Kv sizing with choked-flow and valve checks.", "IEC / ISA", "Control Valve Sizing"),
-        (c4, "◆", "PSV Engineering", "Relief sizing, scenario comparison, API orifice selection and piping checks.", "Relief systems", "PSV Engineering"),
-    ]
-    for col, icon, title, desc, tag, target in cards:
+    left_ws, right_ws = st.columns(2)
+    with left_ws:
+        st.markdown(
+            '<div class="module-card"><div class="mod-icon">🧪</div><h3>Instrument Workspace</h3><p>Contains AGA 3, AGA 8 DETAIL, Control Valve Sizing, and PSV Engineering with a stronger instrument-style look inspired by control valves, PSV, metering orifice, gauges, and PLC panels.</p><span class="mod-tag">CV · PSV · Orifice · Gauge · PLC</span></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Open Instrument Workspace  →", key="go_suite_instr", type="primary", use_container_width=True):
+            goto("AGA 3 — Orifice Flow", suite="Instrument")
+        st.caption("Modules inside Instrument: AGA 3, AGA 8 Gas Properties, Control Valve Sizing, and PSV Engineering with visual cues inspired by control valve, PSV, metering orifice, gauge, and PLC hardware.")
+
+    with right_ws:
+        st.markdown(
+            '<div class="module-card"><div class="mod-icon">⚡</div><h3>Electrical Workspace</h3><p>Contains cable sizing, voltage drop, grounding conductor sizing, step & touch voltage, grounding grid, and lightning-protection earthing calculations with a more electrical-style look inspired by lightning, cables, and panels.</p><span class="mod-tag">Lightning · Cable · Panels</span></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Open Electrical Workspace  →", key="go_suite_elec", use_container_width=True):
+            goto("Electrical Sizing", suite="Electrical")
+        st.caption("Modules inside Electrical: Cable Sizing & Voltage Drop, IEEE 80 Grounding, Step/Touch, Ground Grid Resistance, and Lightning Protection Earthing with visual cues inspired by lightning, cable routing, and electrical panels.")
+
+    st.markdown("### Quick module access")
+    if st.session_state.get("suite", "Instrument") == "Instrument":
+        c1, c2, c3 = st.columns(3)
+        c4, _sp = st.columns([1,2])
+        cards = [
+            (c1, "◫", "AGA 3", "Orifice gas flow and inverse bore sizing with discharge-coefficient checks.", "Metering", "AGA 3 — Orifice Flow", "Instrument"),
+            (c2, "⬡", "AGA 8 DETAIL", "Z-factor, gas density, molecular weight and Fpv from 21-component composition.", "Gas properties", "AGA 8 — Gas Properties", "Instrument"),
+            (c3, "◉", "Control Valve", "Liquid, gas and steam Cv/Kv sizing with choked-flow and valve checks.", "IEC / ISA", "Control Valve Sizing", "Instrument"),
+            (c4, "◆", "PSV Engineering", "Relief sizing, scenario comparison, API orifice selection and piping checks.", "Relief systems", "PSV Engineering", "Instrument"),
+        ]
+    else:
+        c1, _sp = st.columns([1,2])
+        cards = [
+            (c1, "⚡", "Electrical", "Cable sizing, voltage drop, grounding conductor, step/touch voltage and grid resistance.", "Cable & grounding", "Electrical Sizing", "Electrical"),
+        ]
+    for col, icon, title, desc, tag, target, target_suite in cards:
         with col:
             st.markdown(
                 f'<div class="module-card"><div class="mod-icon">{icon}</div><h3>{title}</h3><p>{desc}</p><span class="mod-tag">{tag}</span></div>',
                 unsafe_allow_html=True,
             )
             if st.button(f"Open {title}  →", key=f"go_{target}", use_container_width=True):
-                goto(target)
+                goto(target, suite=target_suite)
 
     st.markdown("### Connected workflow")
     a, b = st.columns([1.25, .75])
     with a:
-        st.info("**AGA 8 → AGA 3 / Control Valve** · Calculate gas properties once, then transfer temperature, pressure, density, MW and Z directly into downstream sizing modules during the same session.")
+        st.info("**Instrument workspace:** AGA 8 → AGA 3 / Control Valve transfer remains available during the same session. **Electrical workspace:** cable and grounding calculations stay separated for a cleaner navigation flow.")
     with b:
-        st.markdown('<div class="status-ok"><b>✓ Ready for engineering calculations</b><br><span style="font-size:.82rem;opacity:.75">Select a module above or use the navigation panel.</span></div>', unsafe_allow_html=True)
+        current_suite = st.session_state.get("suite", "Instrument")
+        st.markdown(f'<div class="status-ok"><b>✓ Active workspace: {current_suite}</b><br><span style="font-size:.82rem;opacity:.75">You can change the workspace anytime from this page or from the sidebar.</span></div>', unsafe_allow_html=True)
 
 elif page == "AGA 3 — Orifice Flow":
     page_header("AGA 3 — Orifice Flow", "Calculate base flow from a known bore, or solve the reference orifice diameter for a target base flow.")
@@ -584,6 +687,307 @@ elif page == "Control Valve Sizing":
         if r.warning: st.warning(r.warning)
 
 
+
+elif page == "Electrical Sizing":
+    page_header("Electrical Sizing", "Cable sizing, voltage drop, IEEE 80 grounding, and lightning-protection earthing calculations derived from the uploaded project workbooks.")
+    st.caption("Source basis: Lampiran C — Cable Sizing / Voltage Drop and Lampiran 2 — Grounding, conductor sizing, step & touch voltage, and App-1C LPS lightning-protection earthing.")
+
+    etab1, etab2, etab3, etab4, etab5 = st.tabs([
+        "⚡ Cable Sizing", "⏚ Ground Conductor", "⚠ Step & Touch", "▦ Grid Resistance", "⚡ Lightning LPS"
+    ])
+
+    with etab1:
+        st.markdown("#### Cable Sizing & Voltage Drop")
+        mode = st.segmented_control("Mode", ["Auto Select", "Check Selected Cable"], default="Auto Select", key="elec_cable_mode")
+        c0, c1, c2 = st.columns(3)
+        voltage = c0.selectbox("Nominal voltage", [400.0, 230.0, 220.0, 6600.0, 20000.0], format_func=lambda x: f"{x/1000:g} kV" if x >= 1000 else f"{x:g} V", key="elec_voltage")
+        default_sys = "DC" if voltage == 220 else ("1-Phase AC" if voltage == 230 else "3-Phase AC")
+        system = c1.selectbox("System", ["3-Phase AC", "1-Phase AC", "DC"], index=["3-Phase AC","1-Phase AC","DC"].index(default_sys), key="elec_system")
+        load_type = c2.selectbox("Load type", ["Feeder", "Motor"], disabled=(system == "DC"), key="elec_load_type")
+        if system == "DC":
+            load_type = "Feeder"
+
+        if voltage > 1000:
+            inst_options = ["Above Ground / In Air", "Direct Buried", "Buried Ducts", "Buried Direct @20°C"]
+            cores = 3
+        else:
+            inst_options = ["Above Ground / In Tray", "In Ducts", "Direct Buried", "Buried Ducts"]
+            default_core = 4 if system == "3-Phase AC" else 2
+            cores = st.selectbox("Cable cores", [1,2,3,4], index=[1,2,3,4].index(default_core), key="elec_cores")
+        installation = st.selectbox("Installation method", inst_options, key="elec_install")
+
+        with st.form("electrical_cable_form"):
+            a,b,c,d = st.columns(4)
+            load_kw = a.number_input("Load rating (kW)", min_value=0.001, value=37.0 if load_type == "Motor" else 360.0, format="%.3f")
+            pf = b.number_input("Power factor", min_value=0.01, max_value=1.0, value=0.89 if load_type == "Motor" else (1.0 if system == "DC" else 0.80), format="%.3f", disabled=(system == "DC"))
+            if system == "DC": pf = 1.0
+            eff = c.number_input("Efficiency", min_value=0.01, max_value=1.0, value=0.94 if load_type == "Motor" else 1.0, format="%.3f")
+            length_m = d.number_input("Cable length (m)", min_value=0.0, value=160.0 if load_type == "Motor" else 35.0, format="%.2f")
+            a,b,c,d = st.columns(4)
+            derating = a.number_input("Total derating factor K", min_value=0.01, max_value=1.5, value=0.66 if voltage <= 1000 else 0.63, format="%.3f")
+            max_vd = b.number_input("Max steady-state VD (%)", min_value=0.01, value=5.0 if voltage <= 1000 else 1.0, format="%.2f")
+            k_factor = c.number_input("Short-circuit k factor", min_value=1.0, value=143.0, format="%.1f")
+            max_parallel = d.number_input("Max parallel runs", min_value=1, max_value=12, value=6, step=1)
+
+            if load_type == "Motor":
+                a,b,c = st.columns(3)
+                start_mult = a.number_input("Starting current multiplier", min_value=1.0, value=7.0, format="%.2f")
+                start_pf = b.number_input("Starting power factor", min_value=0.01, max_value=1.0, value=0.30, format="%.3f")
+                max_start_vd = c.number_input("Max starting VD (%)", min_value=0.01, value=20.0, format="%.2f")
+            else:
+                start_mult, start_pf, max_start_vd = 7.0, 0.30, 20.0
+
+            use_sc = st.checkbox("Check minimum conductor area for short-circuit duty", value=False)
+            if use_sc:
+                a,b = st.columns(2)
+                fault_ka = a.number_input("Fault current (kA rms)", min_value=0.001, value=25.0, format="%.3f")
+                clear_s = b.number_input("Fault clearing time (s)", min_value=0.001, value=1.0 if voltage <= 1000 else 0.1, format="%.3f")
+            else:
+                fault_ka, clear_s = None, None
+
+            cb_i2t = st.number_input("CB let-through energy I²t (A²s, optional; 0 = skip)", min_value=0.0, value=0.0, format="%.0f")
+
+            manual_size = manual_n = None
+            if mode == "Check Selected Cable":
+                sizes = electrical.cable_sizes(voltage, cores if voltage <= 1000 else 3, installation)
+                if not sizes:
+                    st.warning("No cable rows are available for this combination in the uploaded cable data table.")
+                    manual_size = 0.0
+                else:
+                    a,b = st.columns(2)
+                    manual_size = a.selectbox("Selected conductor size (mm²)", sizes, index=min(len(sizes)-1, max(0, len(sizes)//2)))
+                    manual_n = b.number_input("Parallel cable runs", min_value=1, max_value=12, value=1, step=1)
+
+            calc_electrical = st.form_submit_button("Calculate Electrical", type="primary", use_container_width=True)
+
+        if calc_electrical:
+            try:
+                common = dict(
+                    voltage=voltage, load_kw=load_kw, pf=pf, efficiency=eff, length_m=length_m,
+                    derating=derating, cores=cores if voltage <= 1000 else 3, installation=installation,
+                    system=system, load_type=load_type, max_vd_pct=max_vd, max_start_vd_pct=max_start_vd,
+                    start_multiplier=start_mult, start_pf=start_pf, fault_current_ka=fault_ka,
+                    clearing_time_s=clear_s, k_factor=k_factor,
+                )
+                if mode == "Auto Select":
+                    candidates = electrical.recommend_cables(**common, max_parallel=int(max_parallel))
+                    st.session_state["electrical_candidates"] = candidates
+                    st.session_state["electrical_last"] = candidates[0].to_dict() if candidates else None
+                else:
+                    r = electrical.evaluate_cable(**common, size_mm2=float(manual_size), parallel_runs=int(manual_n))
+                    st.session_state["electrical_candidates"] = [r]
+                    st.session_state["electrical_last"] = r.to_dict()
+                st.session_state["electrical_cb_i2t"] = cb_i2t
+            except Exception as e:
+                st.error(f"Electrical calculation error: {e}")
+
+        last = st.session_state.get("electrical_last")
+        candidates = st.session_state.get("electrical_candidates", [])
+        if last:
+            st.markdown("#### Calculation Result")
+            a,b,c,d = st.columns(4)
+            a.metric("Full Load Current", f"{last['full_load_current_a']:.2f} A")
+            b.metric("Selected Cable", f"{last['parallel_runs']} × {last['cores']}C × {last['size_mm2']:g} mm²")
+            c.metric("Derated Ampacity", f"{last['derated_ampacity_a']:.1f} A")
+            d.metric("Voltage Drop", f"{last['voltage_drop_pct']:.2f}%")
+            checks = {
+                "Ampacity": last["ampacity_ok"], "Steady-state VD": last["vd_ok"],
+                "Starting VD": last["start_vd_ok"], "Short-circuit area": last["sc_area_ok"],
+            }
+            check_text = " · ".join([f"{'✓' if ok else '✕'} {name}" for name,ok in checks.items()])
+            if last["overall_ok"]:
+                st.success(f"Overall cable check: ACCEPTABLE · {check_text}")
+            else:
+                st.error(f"Overall cable check: NOT ACCEPTABLE · {check_text}")
+            details = [
+                ["Base ampacity", last["base_ampacity_a"], "A"],
+                ["R @ 90°C", last["resistance_ohm_km"], "Ω/km"],
+                ["X @ 50 Hz", last["reactance_ohm_km"], "Ω/km"],
+                ["Voltage drop", last["voltage_drop_v"], "V"],
+                ["Cable thermal withstand S²k²", last["cable_i2t_a2s"], "A²s"],
+            ]
+            if last.get("min_sc_area_mm2") is not None:
+                details.append(["Minimum SC area", last["min_sc_area_mm2"], "mm²"])
+            if last.get("start_current_a") is not None:
+                details.extend([["Motor starting current", last["start_current_a"], "A"], ["Starting voltage drop", last["start_voltage_drop_pct"], "%"]])
+            cb_val = st.session_state.get("electrical_cb_i2t", 0.0)
+            if cb_val:
+                details.append(["CB let-through I²t", cb_val, "A²s"])
+                details.append(["CB I²t ≤ Cable S²k²", "ACCEPTABLE" if cb_val <= last["cable_i2t_a2s"] else "NOT ACCEPTABLE", "—"])
+            st.dataframe(pd.DataFrame(details, columns=["Parameter","Value","Unit"]), hide_index=True, use_container_width=True)
+
+            if mode == "Auto Select" and candidates:
+                st.markdown("##### Acceptable alternatives")
+                rows=[]
+                for r in candidates[:12]:
+                    rows.append({
+                        "Runs":r.parallel_runs,"Cores":r.cores,"Size (mm²)":r.size_mm2,"Ampacity (A)":round(r.derated_ampacity_a,1),
+                        "VD (%)":round(r.voltage_drop_pct,3),"Start VD (%)":None if r.start_voltage_drop_pct is None else round(r.start_voltage_drop_pct,3),
+                        "Total Cu area (mm²)":r.parallel_runs*r.size_mm2,
+                    })
+                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        elif calc_electrical:
+            st.warning("No cable combination in the uploaded database met all selected criteria. Increase maximum parallel runs, relax criteria only if justified, or review cable/installation data.")
+
+        with st.expander("Calculation basis from the uploaded cable workbook"):
+            st.markdown("""
+- Full-load current follows the sample sheets: √3 denominator for 3-phase AC, V·pf·η for 1-phase AC, and V·η for DC.
+- Steady-state voltage drop follows the workbook expressions using cable R/X and cable length; 3-phase uses √3 and 1-phase/DC uses 2.
+- Motor starting check uses the workbook defaults **Ist = 7 × IFL** and **starting pf = 0.30**, both editable above.
+- Cable ampacity, AC resistance and reactance are taken from the **SUMI LV/MV cable data** tables embedded in the uploaded workbook.
+- Cable thermal withstand is shown as **S²k²**. Optional fault-current input also calculates **Smin = I√t/k**.
+""")
+
+    with etab2:
+        st.markdown("#### Main Ground Conductor Sizing — IEEE 80")
+        with st.form("ground_conductor_form"):
+            a,b,c,d = st.columns(4)
+            ig = a.number_input("Symmetrical earth fault current (kA)", min_value=0.001, value=27.5)
+            tm = b.number_input("Material fusing temperature Tm (°C)", value=1084.0)
+            ta = c.number_input("Ambient temperature Ta (°C)", value=35.0)
+            tc = d.number_input("Fault duration tc (s)", min_value=0.001, value=0.8)
+            a,b,c,d = st.columns(4)
+            alpha = a.number_input("αr (1/°C)", min_value=0.000001, value=0.00381, format="%.6f")
+            rho_r = b.number_input("ρr (µΩ·cm)", min_value=0.0001, value=1.78)
+            k0 = c.number_input("K0 (°C)", value=242.0)
+            tcap = d.number_input("TCAP (J/cm³·°C)", min_value=0.001, value=3.42)
+            gc_calc = st.form_submit_button("Calculate Ground Conductor", type="primary", use_container_width=True)
+        if gc_calc:
+            try:
+                req = electrical.ground_conductor_area_ieee80(ig, tm, ta, alpha, rho_r, k0, tc, tcap)
+                selected = electrical.nearest_standard_size(req)
+                st.session_state["ground_conductor_last"] = {"required_mm2":req,"selected_mm2":selected}
+            except Exception as e: st.error(str(e))
+        gc = st.session_state.get("ground_conductor_last")
+        if gc:
+            a,b = st.columns(2)
+            a.metric("Required Cross-Section", f"{gc['required_mm2']:.2f} mm²")
+            b.metric("Nearest Standard Size", f"{gc['selected_mm2']:.0f} mm²")
+            st.success("Workbook regression case: 27.5 kA / 0.8 s returns ≈ 87.53 mm² → 95 mm².")
+
+    with etab3:
+        st.markdown("#### Maximum Allowable Step & Touch Voltage")
+        with st.form("step_touch_form"):
+            a,b,c = st.columns(3)
+            rho = a.number_input("Soil resistivity ρ (Ω·m)", min_value=0.001, value=48.0)
+            rhos = b.number_input("Surface layer resistivity ρs (Ω·m)", min_value=0.001, value=1000.0)
+            hs = c.number_input("Surface layer thickness hs (m)", min_value=0.0, value=0.10, format="%.3f")
+            a,b = st.columns(2)
+            ts = a.number_input("Fault clearing time ts (s)", min_value=0.001, value=0.8)
+            rb = b.number_input("Human body resistance RB (Ω)", min_value=1.0, value=1000.0)
+            st_calc = st.form_submit_button("Calculate Step & Touch", type="primary", use_container_width=True)
+        if st_calc:
+            try: st.session_state["step_touch_last"] = electrical.allowable_step_touch(rho,rhos,hs,ts,rb)
+            except Exception as e: st.error(str(e))
+        sr = st.session_state.get("step_touch_last")
+        if sr:
+            a,b,c = st.columns(3)
+            a.metric("Surface Derating Cs", f"{sr['Cs']:.6f}")
+            b.metric("Touch 50 kg", f"{sr['Etouch50_V']:.1f} V")
+            c.metric("Touch 70 kg", f"{sr['Etouch70_V']:.1f} V")
+            a,b = st.columns(2)
+            a.metric("Step 50 kg", f"{sr['Estep50_V']:.1f} V")
+            b.metric("Step 70 kg", f"{sr['Estep70_V']:.1f} V")
+            st.dataframe(pd.DataFrame([
+                ["Body current 50 kg",sr['Ib50_A'],"A"],["Body current 70 kg",sr['Ib70_A'],"A"],
+                ["Etouch 50 kg",sr['Etouch50_V'],"V"],["Etouch 70 kg",sr['Etouch70_V'],"V"],
+                ["Estep 50 kg",sr['Estep50_V'],"V"],["Estep 70 kg",sr['Estep70_V'],"V"],
+            ],columns=["Parameter","Value","Unit"]),hide_index=True,use_container_width=True)
+            st.info("The uploaded workbook has an inconsistent cell reference in its 50-kg touch-voltage cell. This program uses the same consistent IEEE 80 expression IB × (RB + 1.5·Cs·ρs) for both 50-kg and 70-kg cases rather than reproducing that single spreadsheet reference anomaly.")
+
+    with etab4:
+        st.markdown("#### Ground Grid + Earth Rod Resistance")
+        with st.form("grid_resistance_form"):
+            a,b,c,d = st.columns(4)
+            rho_g = a.number_input("Grid-layer soil ρ (Ω·m)", min_value=0.001, value=6.71)
+            rho_rod = b.number_input("Rod-layer soil ρ (Ω·m)", min_value=0.001, value=144.47)
+            x = c.number_input("Grid length x (m)", min_value=0.001, value=85.0)
+            y = d.number_input("Grid width y (m)", min_value=0.001, value=75.0)
+            a,b,c,d = st.columns(4)
+            lc = a.number_input("Total grid conductor LC (m)", min_value=0.001, value=320.0)
+            h = b.number_input("Burial depth h (m)", min_value=0.001, value=0.8)
+            dc = c.number_input("Grid conductor diameter (m)", min_value=0.000001, value=0.014, format="%.4f")
+            nr = d.number_input("Number of earth rods", min_value=1, value=37, step=1)
+            a,b,c,d = st.columns(4)
+            lr = a.number_input("Rod length LR (m)", min_value=0.001, value=3.0)
+            dr = b.number_input("Rod diameter (m)", min_value=0.000001, value=0.019, format="%.4f")
+            k1 = c.number_input("K1", value=1.374705882352941, format="%.9f")
+            k2 = d.number_input("K2", value=5.632352941176471, format="%.9f")
+            grid_calc = st.form_submit_button("Calculate Grid Resistance", type="primary", use_container_width=True)
+        if grid_calc:
+            try:
+                st.session_state["grid_resistance_last"] = electrical.grid_resistance_rectangular(
+                    rho_g,rho_rod,x,y,lc,h,dc,lr,dr,int(nr),k1,k2
+                )
+            except Exception as e: st.error(str(e))
+        gr = st.session_state.get("grid_resistance_last")
+        if gr:
+            a,b,c,d = st.columns(4)
+            a.metric("Grid R1", f"{gr['R1_ohm']:.5f} Ω")
+            b.metric("Rods R2", f"{gr['R2_ohm']:.5f} Ω")
+            c.metric("Mutual R12", f"{gr['R12_ohm']:.5f} Ω")
+            d.metric("Total Rg", f"{gr['Rg_ohm']:.5f} Ω")
+            if gr["Acceptable_lt_5_ohm"]: st.success("Grounding resistance < 5 Ω: ACCEPTABLE for the workbook criterion.")
+            else: st.error("Grounding resistance ≥ 5 Ω: NOT ACCEPTABLE for the workbook criterion.")
+            st.caption("Default regression case reproduces the uploaded WTIP calculation at approximately Rg = 0.05716 Ω.")
+
+    with etab5:
+        st.markdown("#### Lightning Protection Earthing — App-1C LPS")
+        st.caption("This calculator reproduces the Lightning Protection Earthing Resistance worksheet in Lampiran 2. It is an earthing-resistance calculation, not a lightning-risk or protection-radius/rolling-sphere study.")
+        with st.form("lightning_lps_form"):
+            a,b,c,d = st.columns(4)
+            rho_lps_grid = a.number_input("Grid-layer soil ρ (Ω·m)", min_value=0.001, value=24.29, key="lps_rho_grid")
+            rho_lps_rod = b.number_input("Rod-layer soil ρ (Ω·m)", min_value=0.001, value=24.40, key="lps_rho_rod")
+            spacing = c.number_input("Triangle side / rod spacing (m)", min_value=0.001, value=6.0, key="lps_spacing")
+            lc_lps = d.number_input("Total grid conductor LC (m)", min_value=0.001, value=18.0, key="lps_lc")
+            a,b,c,d = st.columns(4)
+            h_lps = a.number_input("Burial depth h (m)", min_value=0.001, value=0.8, key="lps_h")
+            dc_lps = b.number_input("Grid conductor diameter (m)", min_value=0.000001, value=0.018, format="%.4f", key="lps_dc")
+            lr_lps = c.number_input("Earth rod length LR (m)", min_value=0.001, value=3.0, key="lps_lr")
+            dr_lps = d.number_input("Earth rod diameter (m)", min_value=0.000001, value=0.016, format="%.4f", key="lps_dr")
+            a,b,c,d = st.columns(4)
+            nr_lps = a.number_input("Number of earth rods", min_value=1, value=3, step=1, key="lps_nr")
+            k1_lps = b.number_input("K1", value=1.37, format="%.6f", key="lps_k1")
+            k2_lps = c.number_input("K2", value=5.65, format="%.6f", key="lps_k2")
+            req_lps = d.number_input("Maximum allowable Rg (Ω)", min_value=0.001, value=10.0, key="lps_req")
+            lps_calc = st.form_submit_button("Calculate Lightning Earthing", type="primary", use_container_width=True)
+        if lps_calc:
+            try:
+                st.session_state["lightning_lps_last"] = electrical.lightning_lps_earthing(
+                    rho_lps_grid, rho_lps_rod, spacing, lc_lps, h_lps, dc_lps,
+                    lr_lps, dr_lps, int(nr_lps), k1_lps, k2_lps, req_lps
+                )
+            except Exception as e:
+                st.error(str(e))
+        lpsr = st.session_state.get("lightning_lps_last")
+        if lpsr:
+            a,b,c,d = st.columns(4)
+            a.metric("Grid R1", f"{lpsr['R1_ohm']:.5f} Ω")
+            b.metric("Rods R2", f"{lpsr['R2_ohm']:.5f} Ω")
+            c.metric("Mutual R12", f"{lpsr['R12_ohm']:.5f} Ω")
+            d.metric("Total Rg", f"{lpsr['Rg_ohm']:.5f} Ω")
+            if lpsr["Acceptable"]:
+                st.success(f"Lightning-protection earthing resistance < {lpsr['Requirement_ohm']:.2f} Ω: ACCEPTABLE")
+            else:
+                st.error(f"Lightning-protection earthing resistance ≥ {lpsr['Requirement_ohm']:.2f} Ω: NOT ACCEPTABLE")
+            st.dataframe(pd.DataFrame([
+                ["Triangle area", lpsr["Triangle_Area_m2"], "m²"],
+                ["Equivalent a'", lpsr["a_prime_m"], "m"],
+                ["Earth rod count", lpsr["Rod_Count"], "—"],
+                ["Rod spacing", lpsr["Rod_Spacing_m"], "m"],
+            ], columns=["Parameter","Value","Unit"]), hide_index=True, use_container_width=True)
+            st.info("Regression case from Lampiran 2, App-1C LPS: 3 rods × 3 m in a 6 m triangular arrangement gives Rg ≈ 2.33215 Ω, with the worksheet requirement < 10 Ω.")
+        with st.expander("Calculation basis from Lampiran 2 — App-1C LPS"):
+            st.markdown("""
+- The worksheet title is **Appendix 1C — Lightning Protection Earthing Resistance**.
+- The default layout uses **3 vertical earth rods**, each **3 m** long, arranged as an equilateral triangle with **6 m spacing**.
+- The worksheet calculates **R1** (grid conductor resistance), **R2** (earth-rod resistance), **R12** (mutual resistance), then **Rg = (R1·R2 − R12²) / (R1 + R2 − 2R12)**.
+- The worksheet acceptance criterion is **Rg < 10 Ω**.
+- The workbook note refers to **NFC 17-102 Type A.2** earthing arrangement.
+- This module intentionally does **not** calculate protection radius, rolling-sphere coverage, or lightning-risk assessment because those calculations are not provided in the uploaded workbook.
+""")
+
+
 elif page == "PSV Engineering":
     page_header("PSV Engineering", "API-style sizing tools for common relief services. Add calculated cases to the Scenario Register to compare the governing required area.")
     _default("psv_scenarios", [])
@@ -714,6 +1118,7 @@ This web edition wraps the same Python calculation engines used in the Windows e
 - AGA 3 orifice-flow calculation and inverse bore sizing.
 - AGA 8 DETAIL gas-property calculation with 21-component composition.
 - Control Valve sizing for liquid, gas and steam services.
+- Electrical cable sizing, voltage drop, grounding conductor, permissible step/touch voltage, and grid resistance.
 - PSV sizing and relief-load utilities for gas/vapor, steam, liquid, two-phase, fire, thermal expansion and piping checks.
 
 ### Engineering use
@@ -727,6 +1132,7 @@ Browser-session values are kept in Streamlit session state. They are not a subst
         "app":APP_TITLE,"version":APP_VERSION,
         "aga3_last":st.session_state.get("aga3_last"),
         "aga8_last":st.session_state.get("aga8_last"),
+        "electrical_last":st.session_state.get("electrical_last"),
         "psv_scenarios":st.session_state.get("psv_scenarios",[]),
     }
     st.download_button("Download current calculation snapshot (JSON)",json.dumps(project_snapshot,indent=2,default=str),"instrument_sizing_snapshot.json","application/json")
