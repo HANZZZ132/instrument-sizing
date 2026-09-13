@@ -24,7 +24,7 @@ def validate_range(value, name, min_val, max_val):
 def validate_liquid_inputs(q_gpm, p1_psia, p2_psia, g, mu_cp, kd=0.65, kw=1.0, kp=1.0):
     validate_positive(q_gpm, "Flow Rate (Q)")
     validate_positive(p1_psia, "Relieving Pressure (P1)")
-    validate_positive(p2_psia, "Back Pressure (P2)")
+    validate_non_negative(p2_psia, "Back Pressure (P2)")
     validate_positive(g, "Specific Gravity (G)")
     validate_positive(mu_cp, "Viscosity")
     validate_range(kd, "Discharge Coefficient (Kd)", KD_MIN, KD_MAX)

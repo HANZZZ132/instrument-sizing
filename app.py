@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -14,16 +15,19 @@ import electrical_engine as electrical
 from psv_engine.gas_relief import calculate_gas_relief_area
 from psv_engine.liquid_relief import calculate_liquid_relief_area
 from psv_engine.two_phase import calculate_omega_flashing, calculate_two_phase_area
-from psv_engine.fire_scenarios import calculate_fire_wetted_load
+from psv_engine.fire_scenarios import calculate_fire_wetted_load, ENV_FACTORS
 from psv_engine.thermal_expansion import calculate_thermal_expansion_load
 from psv_engine.advanced_sizing import calculate_napier_steam_area
 from psv_engine.piping import calculate_inlet_pressure_drop, check_inlet_rule, check_outlet_rule
 from psv_engine.unit_converter import (
-    barg_to_psia, kg_h_to_lb_h, c_to_rankine, m3_h_to_gpm, m3_kg_to_ft3_lb,
+    barg_to_psia, barg_to_psig, kg_h_to_lb_h, c_to_rankine, m3_h_to_gpm, gpm_to_m3_h, m3_kg_to_ft3_lb,
 )
 
 APP_TITLE = "Instrument Sizing"
-APP_VERSION = "Web 1.2.4"
+APP_VERSION = "Web 1.2.8 · Code Audited"
+BASE_DIR = Path(__file__).resolve().parent
+INSTRUMENT_HERO_IMAGE = BASE_DIR / "assets" / "instrument_workspace_hero.png"
+ELECTRICAL_HERO_IMAGE = BASE_DIR / "assets" / "electrical_workspace_hero.png"
 
 COMPONENTS = [
     "C1 (Methane)", "N2 (Nitrogen)", "CO2", "C2 (Ethane)", "C3 (Propane)",
@@ -332,15 +336,21 @@ def page_header(title, subtitle):
 
 
 def goto(page, suite=None):
+    # Do not mutate a session-state key after the widget using that key
+    # has already been instantiated in the current Streamlit run.
+    # Queue the requested workspace/page, then apply it on the next rerun
+    # before sidebar widgets are created.
     if suite is not None:
-        st.session_state["suite"] = suite
+        st.session_state["suite_request"] = suite
     st.session_state["nav_request"] = page
     st.rerun()
 
 
 _default("suite", "Instrument")
 
-# Handle requests from welcome-page buttons before rendering sidebar navigation.
+# Apply queued navigation requests BEFORE sidebar widgets are instantiated.
+if "suite_request" in st.session_state:
+    st.session_state["suite"] = st.session_state.pop("suite_request")
 if "nav_request" in st.session_state:
     st.session_state["page"] = st.session_state.pop("nav_request")
 
@@ -402,6 +412,10 @@ if page == "Welcome":
         unsafe_allow_html=True,
     )
     st.markdown(f'<div class="suite-badge" style="padding:.75rem 1rem;border-radius:14px;margin:.2rem 0 1rem 0;font-weight:750;">{active_badge}</div>', unsafe_allow_html=True)
+
+    active_image = INSTRUMENT_HERO_IMAGE if st.session_state.get("suite", "Instrument") == "Instrument" else ELECTRICAL_HERO_IMAGE
+    if active_image.exists():
+        st.image(str(active_image), use_container_width=True)
 
     st.markdown('<div class="workflow">'
                 '<div class="workflow-item"><b>01 · Choose</b><span>Select Instrument or Electrical</span></div>'
@@ -689,11 +703,11 @@ elif page == "Control Valve Sizing":
 
 
 elif page == "Electrical Sizing":
-    page_header("Electrical Sizing", "Cable sizing, voltage drop, IEEE 80 grounding, and lightning-protection earthing calculations derived from the uploaded project workbooks.")
-    st.caption("Source basis: Lampiran C — Cable Sizing / Voltage Drop and Lampiran 2 — Grounding, conductor sizing, step & touch voltage, and App-1C LPS lightning-protection earthing.")
+    page_header("Electrical Sizing", "Cable sizing, voltage drop, IEEE 80 grounding, conventional NFPA 780 rolling-sphere screening, lightning earthing, and NF C 17-102 ESE screening.")
+    st.caption("Source basis: Lampiran C — Cable Sizing / Voltage Drop; Lampiran 2 — grounding and App-1C LPS earthing; NFPA 780 (2000) — traditional rolling-sphere screening; NF C 17-102:2011 — ESE protection radius and installation screening.")
 
-    etab1, etab2, etab3, etab4, etab5 = st.tabs([
-        "⚡ Cable Sizing", "⏚ Ground Conductor", "⚠ Step & Touch", "▦ Grid Resistance", "⚡ Lightning LPS"
+    etab1, etab2, etab3, etab4, etab5, etab6, etab7 = st.tabs([
+        "⚡ Cable Sizing", "⏚ Ground Conductor", "⚠ Step & Touch", "▦ Grid Resistance", "⚡ Lightning Earthing", "⛈ NFPA 780 Rolling Sphere", "⚡ ESE — NF C 17-102"
     ])
 
     with etab1:
@@ -984,7 +998,133 @@ elif page == "Electrical Sizing":
 - The worksheet calculates **R1** (grid conductor resistance), **R2** (earth-rod resistance), **R12** (mutual resistance), then **Rg = (R1·R2 − R12²) / (R1 + R2 − 2R12)**.
 - The worksheet acceptance criterion is **Rg < 10 Ω**.
 - The workbook note refers to **NFC 17-102 Type A.2** earthing arrangement.
-- This module intentionally does **not** calculate protection radius, rolling-sphere coverage, or lightning-risk assessment because those calculations are not provided in the uploaded workbook.
+- Protection-radius calculation is handled separately in the **ESE Protection** tab using the uploaded NF C 17-102:2011 standard.
+""")
+
+    with etab6:
+        st.markdown("#### Conventional Lightning Protection — NFPA 780 (2000) Rolling Sphere")
+        st.caption("Traditional LPS screening only. The uploaded NFPA 780 edition uses a 150 ft (46 m) rolling sphere and explicitly excludes Early Streamer Emission (ESE) systems from its scope.")
+        with st.form("nfpa780_rolling_sphere_form"):
+            a,b,c = st.columns(3)
+            h1 = a.number_input("Higher roof / strike-termination height h1 (m)", min_value=0.01, value=15.0, step=0.5, key="nfpa_h1")
+            h2 = b.number_input("Lower protected plane height h2 (m)", min_value=0.0, value=0.0, step=0.5, key="nfpa_h2")
+            req_d = c.number_input("Required horizontal protected distance (m, 0 = none)", min_value=0.0, value=20.0, step=0.5, key="nfpa_req_d")
+            nfpa_calc = st.form_submit_button("Calculate NFPA 780 Rolling Sphere", type="primary", use_container_width=True)
+        if nfpa_calc:
+            try:
+                nr = electrical.nfpa780_rolling_sphere_2000(h1, h2)
+                nr["Required_Distance_m"] = None if req_d <= 0 else req_d
+                nr["Coverage_OK"] = None if req_d <= 0 else nr["Horizontal_Protected_Distance_m"] >= req_d
+                nr["Coverage_Margin_m"] = None if req_d <= 0 else nr["Horizontal_Protected_Distance_m"] - req_d
+                st.session_state["nfpa780_last"] = nr
+            except Exception as e:
+                st.error(str(e))
+        nr = st.session_state.get("nfpa780_last")
+        if nr:
+            a,b,c,d = st.columns(4)
+            a.metric("Rolling-sphere radius", f"{nr['Sphere_Radius_m']:.2f} m")
+            b.metric("Horizontal protected distance", f"{nr['Horizontal_Protected_Distance_m']:.2f} m")
+            c.metric("h1", f"{nr['Higher_Height_h1_m']:.2f} m")
+            d.metric("h2", f"{nr['Lower_Protected_Height_h2_m']:.2f} m")
+            if nr.get("Coverage_OK") is not None:
+                if nr["Coverage_OK"]:
+                    st.success(f"Required horizontal distance is covered. Margin = {nr['Coverage_Margin_m']:.2f} m.")
+                else:
+                    st.error(f"Required horizontal distance is NOT covered. Shortfall = {abs(nr['Coverage_Margin_m']):.2f} m.")
+            if nr["High_Rise_Additional_Analysis"]:
+                st.warning(nr["Note"])
+            st.dataframe(pd.DataFrame([
+                ["Method", nr["Method"], "—"],
+                ["Sphere radius", nr["Sphere_Radius_ft"], "ft"],
+                ["Height difference", nr["Height_Difference_m"], "m"],
+                ["Horizontal protected distance", nr["Horizontal_Protected_Distance_ft"], "ft"],
+                ["ESE covered by this method?", "No", "—"],
+            ], columns=["Parameter","Value","Unit"]), hide_index=True, use_container_width=True)
+        with st.expander("NFPA 780 (2000) basis and scope"):
+            st.markdown("""
+- The uploaded NFPA 780 edition uses a **150 ft (46 m)** rolling sphere for the traditional zone-of-protection method.
+- The equation implemented is the §3.7.3.4 horizontal-distance relationship, evaluated in feet exactly as published and converted back to metres.
+- The simple equation requires **h1 − h2 ≤ 150 ft (46 m)**.
+- Structures / points above the basic 150 ft geometry need the additional high-rise limitations and full layout analysis described by the standard.
+- **ESE is not an NFPA 780 method in this uploaded edition**. Use the separate **ESE — NF C 17-102** tab for ESE screening.
+- A complete NFPA 780 design also requires strike termination placement, conductors, bonding, grounding, surge protection, inspection and maintenance checks; this tab is geometry screening only.
+""")
+
+    with etab7:
+        st.markdown("#### ESE Protection Radius — NF C 17-102:2011")
+        st.caption("Early Streamer Emission (ESEAT) screening based on the uploaded NF C 17-102 standard. This is intentionally separate from NFPA 780: the uploaded NFPA 780 (2000) edition explicitly excludes ESE systems. Use the certified ΔT value from the selected ESEAT test report.")
+        with st.form("ese_nfc17102_form"):
+            a,b,c,d = st.columns(4)
+            ese_level = a.selectbox("Protection level", ["I", "II", "III", "IV"], index=0, key="ese_level")
+            ese_dt = b.number_input("ESE efficiency ΔT (µs)", min_value=0.0, max_value=60.0, value=60.0, step=1.0, key="ese_dt")
+            ese_h = c.number_input("ESE tip height h above protected plane (m)", min_value=2.0, value=5.0, step=0.5, key="ese_h")
+            ese_required = d.number_input("Required coverage radius (m, 0 = none)", min_value=0.0, value=50.0, step=1.0, key="ese_required")
+
+            a,b,c,d = st.columns(4)
+            ese_system = a.selectbox("ESE system", ["Non-isolated", "Isolated"], key="ese_system")
+            ese_count = b.number_input("Number of ESEATs", min_value=1, value=1, step=1, key="ese_count")
+            building_h = c.number_input("Building height (m, optional)", min_value=0.0, value=20.0, step=1.0, key="ese_building_h")
+            tip_elev = d.number_input("ESE tip elevation above ground (m, optional)", min_value=0.0, value=25.0, step=1.0, key="ese_tip_elev")
+
+            level_ipp = st.checkbox("Apply special Level I++ radius reduction (40% reduction from Level-I radius)", value=False, key="ese_ipp")
+            ese_calc = st.form_submit_button("Calculate ESE Protection Radius", type="primary", use_container_width=True)
+
+        if ese_calc:
+            try:
+                st.session_state["ese_last"] = electrical.ese_protection_radius_nfc17102(
+                    protection_level=ese_level,
+                    ese_efficiency_us=ese_dt,
+                    height_over_protected_plane_m=ese_h,
+                    required_radius_m=None if ese_required <= 0 else ese_required,
+                    building_height_m=None if building_h <= 0 else building_h,
+                    ese_tip_elevation_m=None if tip_elev <= 0 else tip_elev,
+                    system_type=ese_system,
+                    ese_count=int(ese_count),
+                    apply_level_i_plus_plus=level_ipp,
+                )
+            except Exception as e:
+                st.error(str(e))
+
+        er = st.session_state.get("ese_last")
+        if er:
+            a,b,c,d = st.columns(4)
+            a.metric("Protection Radius Rp", f"{er['Rp_m']:.2f} m")
+            b.metric("Reference Radius r", f"{er['r_m']:.0f} m")
+            c.metric("Δ", f"{er['Delta_m']:.1f} m")
+            d.metric("Circular Coverage Area", f"{er['Protected_Circular_Area_m2']:.0f} m²")
+
+            if er["Coverage_OK"] is not None:
+                if er["Coverage_OK"]:
+                    st.success(f"Required radius {er['Required_Radius_m']:.2f} m is covered. Margin = {er['Coverage_Margin_m']:.2f} m.")
+                else:
+                    st.error(f"Required radius {er['Required_Radius_m']:.2f} m is NOT covered. Shortfall = {abs(er['Coverage_Margin_m']):.2f} m.")
+
+            if er["High_Rise_Additional_Protection_Required"]:
+                st.warning("High-rise rule triggered: additional direct-strike protection is required for the highest 20% of structures above 60 m or for points above 120 m; NF C 17-102 also calls for a minimum of four down-conductors for this case.")
+
+            st.info(er["Downconductor_Guidance"])
+            if er["Special_Note"]:
+                st.warning(er["Special_Note"])
+
+            st.dataframe(pd.DataFrame([
+                ["Protection level", er["Protection_Level"], "—"],
+                ["ESEAT efficiency ΔT", er["DeltaT_us"], "µs"],
+                ["Height h", er["Height_h_m"], "m"],
+                ["Rp(5)", er["Rp5_m"], "m"],
+                ["Calculated Rp before I++ adjustment", er["Rp_raw_m"], "m"],
+                ["Minimum specific down-conductors", er["Minimum_Specific_Downconductors"], "—"],
+                ["Equation used", er["Equation"], "—"],
+            ], columns=["Parameter","Value","Unit"]), hide_index=True, use_container_width=True)
+
+        with st.expander("NF C 17-102 calculation basis and limits"):
+            st.markdown("""
+- For **h ≥ 5 m**: **Rp(h) = √[2rh − h² + Δ(2r + Δ)]**.
+- For **2 m ≤ h ≤ 5 m**: **Rp = h × Rp(5) / 5**.
+- Reference radius **r**: Level I = 20 m, Level II = 30 m, Level III = 45 m, Level IV = 60 m.
+- The standard limits ESEAT efficiency **ΔT to 60 µs maximum**. When ΔT is entered in microseconds, the numerical value of **Δ in metres** is the same because Δ = ΔT[s] × 10⁶.
+- The ESEAT tip is required to be at least **2 m above the area it protects**.
+- A risk analysis is required to establish the minimum required lightning protection level.
+- This calculator is a design-screening aid; ESEAT product certification, placement, separation distance, down-conductor routing, bonding, earthing, SPD coordination, inspection and maintenance still need project-specific verification.
 """)
 
 
@@ -1001,12 +1141,13 @@ elif page == "PSV Engineering":
             a,b,c=st.columns(3); W=a.number_input("Required relief rate (kg/h)",0.001,value=15000.0); setb=b.number_input("Set pressure (barg)",0.001,value=25.0); bp=c.number_input("Back pressure (barg)",0.0,value=1.5)
             a,b,c=st.columns(3); op=a.number_input("Overpressure (%)",0.0,value=10.0); temp=b.number_input("Relieving temperature (°C)",value=45.0); z=c.number_input("Z",0.001,value=.92)
             a,b,c=st.columns(3); mw=a.number_input("MW",0.001,value=16.04); k=b.number_input("k",0.1,value=1.31); n=c.number_input("Parallel valves",1,20,value=1,step=1)
-            a,b,c=st.columns(3); kd=a.number_input("Kd",0.001,1.0,value=.975); kb=b.number_input("Kb",0.001,1.2,value=1.0); kc=c.number_input("Kc",0.001,1.2,value=1.0)
+            vtype=st.selectbox("Valve type",["conventional","balanced_bellows","pilot"], key="psv_gas_vtype")
+            a,b,c=st.columns(3); kd=a.number_input("Kd",0.001,1.0,value=.975); kb=b.number_input("Kb (balanced bellows / manufacturer; ignored for conventional & pilot direct method)",0.001,1.0,value=1.0); kc=c.number_input("Kc",0.001,1.2,value=1.0)
             calc=st.form_submit_button("Calculate PSV",type="primary",use_container_width=True)
         if calc:
             try:
                 p1=barg_to_psia(setb*(1+op/100)); p2=barg_to_psia(bp)
-                psv_result=calculate_gas_relief_area(kg_h_to_lb_h(W),p1,p2,c_to_rankine(temp),z,mw,k,kd,kb,kc,int(n))
+                psv_result=calculate_gas_relief_area(kg_h_to_lb_h(W),p1,p2,c_to_rankine(temp),z,mw,k,kd,kb,kc,int(n),valve_type=vtype)
             except Exception as e: st.error(str(e))
     elif service == "Steam":
         with st.form("psv_steam"):
@@ -1024,14 +1165,15 @@ elif page == "PSV Engineering":
         with st.form("psv_liquid"):
             case_name=st.text_input("Scenario name",value="Blocked Outlet — Liquid")
             a,b,c=st.columns(3); q=a.number_input("Relief flow (m³/h)",0.0001,value=100.0); setb=b.number_input("Set pressure (barg)",0.001,value=25.0); bp=c.number_input("Back pressure (barg)",0.0,value=1.5)
-            a,b,c=st.columns(3); op=a.number_input("Overpressure (%)",0.0,value=10.0); sg=b.number_input("Specific gravity",0.001,value=.8); mu=c.number_input("Viscosity (cP)",0.0001,value=1.0)
-            a,b,c=st.columns(3); kd=a.number_input("Kd",0.001,1.0,value=.65); kc=b.number_input("Kc",0.001,1.2,value=1.0); n=c.number_input("Parallel valves",1,20,value=1,step=1)
-            vtype=st.selectbox("Valve type",["conventional","balanced_bellows","pilot"])
+            a,b,c=st.columns(3); op=a.number_input("Overpressure (%)",0.0,value=10.0); sg=b.number_input("Specific gravity",0.001,value=.8); visc_unit=c.selectbox("Viscosity unit",["cP","SSU"], key="psv_liq_visc_unit")
+            a,b,c=st.columns(3); mu=a.number_input(f"Viscosity ({visc_unit})",0.0001,value=1.0 if visc_unit=="cP" else 2000.0); kd=b.number_input("Kd",0.001,1.0,value=.65); kc=c.number_input("Kc",0.001,1.2,value=1.0)
+            a,b=st.columns(2); n=a.number_input("Parallel valves",1,20,value=1,step=1); vtype=b.selectbox("Valve type",["conventional","balanced_bellows","pilot"], key="psv_liq_vtype")
             calc=st.form_submit_button("Calculate PSV",type="primary",use_container_width=True)
         if calc:
             try:
-                p1=barg_to_psia(setb*(1+op/100)); p2=barg_to_psia(bp)
-                psv_result=calculate_liquid_relief_area(m3_h_to_gpm(q),p1,p2,sg,mu,kd=kd,kc=kc,num_valves=int(n),overpressure_pct=op,valve_type=vtype,set_pressure_psig=setb*14.5037738)
+                # API 520 liquid Eq. 32/33 uses gauge pressure (psig), not absolute pressure.
+                p1=barg_to_psig(setb*(1+op/100)); p2=barg_to_psig(bp)
+                psv_result=calculate_liquid_relief_area(m3_h_to_gpm(q),p1,p2,sg,mu,kd=kd,kc=kc,num_valves=int(n),overpressure_pct=op,valve_type=vtype,set_pressure_psig=barg_to_psig(setb),viscosity_unit=visc_unit)
             except Exception as e: st.error(str(e))
     elif service == "Two-Phase":
         with st.form("psv_tp"):
@@ -1046,11 +1188,14 @@ elif page == "PSV Engineering":
                 psv_result=calculate_two_phase_area(kg_h_to_lb_h(W),barg_to_psia(setb),barg_to_psia(bp),m3_kg_to_ft3_lb(v0),omega,kd,kb,kc,int(n)); psv_result["Omega"]=omega
             except Exception as e: st.error(str(e))
     elif service == "External Fire — Wetted Vessel":
+        env_choice=st.selectbox("API 521 Table 5 environment-factor preset", list(ENV_FACTORS.keys()) + ["Custom / project-specific"], key="fire_env_choice")
+        preset_f = ENV_FACTORS.get(env_choice, 1.0)
         with st.form("psv_fire"):
             case_name=st.text_input("Scenario name",value="External Fire")
-            a,b,c=st.columns(3); area=a.number_input("Wetted area (ft²)",0.001,value=1000.0); F=b.number_input("Environmental factor F",0.001,value=1.0); hvap=c.number_input("Latent heat (BTU/lb)",0.001,value=150.0)
-            drainage=st.checkbox("Adequate drainage / firefighting",value=True)
+            a,b,c=st.columns(3); area=a.number_input("Wetted area (ft²)",0.001,value=1000.0); F=b.number_input("Environmental factor F",0.0,1.0,value=float(preset_f)); hvap=c.number_input("Latent heat (BTU/lb)",0.001,value=150.0)
+            drainage=st.checkbox("Adequate drainage / prompt firefighting",value=True)
             calc=st.form_submit_button("Calculate Relief Load",type="primary",use_container_width=True)
+        st.caption("API 521 Table 5: water application facilities on a bare vessel and depressuring/emptying facilities are listed as F = 1.0 with footnote conditions; they are not automatically credited as F = 0.3 in this version.")
         if calc:
             try:
                 w,qh=calculate_fire_wetted_load(area,F,hvap,drainage)
@@ -1062,7 +1207,9 @@ elif page == "PSV Engineering":
             a,b,c,d=st.columns(4); beta=a.number_input("Expansion coefficient (1/°F)",0.0000001,value=.0005,format="%.7f"); heat=b.number_input("Heat transfer (BTU/h)",0.001,value=170000.0); sg=c.number_input("Specific gravity",0.001,value=.8); cp=d.number_input("Specific heat (BTU/lb-°F)",0.001,value=.5)
             calc=st.form_submit_button("Calculate Relief Load",type="primary",use_container_width=True)
         if calc:
-            try: psv_result={"Relief_Load_lb_h":calculate_thermal_expansion_load(beta,heat,sg,cp)}
+            try:
+                q_gpm=calculate_thermal_expansion_load(beta,heat,sg,cp)
+                psv_result={"Relief_Flow_gpm":q_gpm,"Relief_Flow_m3_h":gpm_to_m3_h(q_gpm),"Method":"API 521 thermal expansion — volumetric relief flow"}
             except Exception as e: st.error(str(e))
     else:
         with st.form("psv_pipe"):

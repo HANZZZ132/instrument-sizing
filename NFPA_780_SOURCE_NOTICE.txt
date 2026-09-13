@@ -1,0 +1,13 @@
+NFPA 780 SOURCE NOTICE
+
+Module: Electrical > NFPA 780 Rolling Sphere
+Source basis: user-supplied NFPA 780, Standard for the Installation of Lightning Protection Systems, 2000 Edition.
+
+Implemented scope:
+- Traditional rolling-sphere geometry screening using the 150 ft (46 m) sphere in Section 3.7.3.
+- Section 3.7.3.4 horizontal protected-distance relationship, evaluated in USC units then converted to SI.
+
+Important scope boundary:
+- The uploaded NFPA 780 edition explicitly excludes Early Streamer Emission (ESE) systems.
+- ESE calculations in this application are separate and are based on the user-supplied NF C 17-102 standard.
+- Full NFPA 780 compliance requires project-specific review of strike termination placement, conductor routing, bonding, grounding, surge protection, inspection and maintenance requirements beyond this screening calculator.

@@ -11,16 +11,20 @@ import math
 # adequate drainage and prompt firefighting are available.
 FIRE_WETTED_HEAT_CONSTANT_NO_DRAINAGE = 34500.0
 
-# API 521 Table 4 — Environmental factor F (fire case).
+# API 521 7th ed., Table 5 — Environmental factor F (fire case).
 ENV_FACTORS = {
-    "Bare vessel (no insulation)": 1.0,
-    "Insulated vessel (k <= 4 Btu/h/ft2/F)": 0.3,
-    "Insulated vessel (k <= 2 Btu/h/ft2/F)": 0.15,
-    "Insulated vessel (k <= 1 Btu/h/ft2/F)": 0.075,
-    "Insulated vessel (k <= 0.5 Btu/h/ft2/F)": 0.0375,
-    "Water spray (sprinkler)": 0.3,
-    "Depressuring and emptying facility": 0.3,
-    "Underground storage": 0.0,
+    "Bare vessel (uninsulated)": 1.0,
+    "Insulated — conductance 4 Btu/h·ft²·°F": 0.30,
+    "Insulated — conductance 2 Btu/h·ft²·°F": 0.15,
+    "Insulated — conductance 1 Btu/h·ft²·°F": 0.075,
+    "Insulated — conductance 0.67 Btu/h·ft²·°F": 0.050,
+    "Insulated — conductance 0.5 Btu/h·ft²·°F": 0.0376,
+    "Insulated — conductance 0.4 Btu/h·ft²·°F": 0.030,
+    "Insulated — conductance 0.33 Btu/h·ft²·°F": 0.026,
+    "Water application facilities on bare vessel": 1.0,
+    "Depressuring and emptying facilities": 1.0,
+    "Earth-covered storage": 0.03,
+    "Below-grade storage": 0.00,
 }
 
 

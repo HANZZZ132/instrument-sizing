@@ -4,8 +4,7 @@
 # --- API 520 Liquid Relief ---
 LIQUID_FORMULA_CONSTANT = 38.0
 REYNOLDS_CONSTANT = 2800.0
-# API 520 Part I (9th/10th ed.) viscosity correction factor:
-#   Kv = (KV_A + KV_B/Re^0.5 + KV_C/Re^1.5)^-1
+# Legacy compatibility constants; API 520 10th ed. Eq. (34) is implemented directly in liquid_relief.py
 KV_A = 0.9935
 KV_B = 2.878
 KV_C = 342.75
@@ -89,7 +88,7 @@ Z_MIN = 0.01
 Z_MAX = 2.0
 K_MIN = 1.001
 K_MAX = 2.5
-F_FACTOR_MIN = 0.1
+F_FACTOR_MIN = 0.0
 F_FACTOR_MAX = 1.0
 
 # --- Acoustics (API 521 §5.8.10) ---

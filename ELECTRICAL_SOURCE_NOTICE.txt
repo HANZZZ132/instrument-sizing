@@ -1,0 +1,28 @@
+Electrical module source basis
+==============================
+
+Implemented from the user-provided workbooks:
+
+1) Lampiran C_Cable Sizing (1).xlsx
+   - Sample sheets: 20 kVAC, 6.6 kVAC, 400 VAC feeder, 400 VAC motor,
+     230 VAC feeder, 220 VDC feeder.
+   - Cable database: CABLE DATA (SUMI-LV), CABLE DATA (SUMI-MV).
+   - Implemented calculations: full-load current, derated ampacity,
+     steady-state voltage drop, motor-start voltage drop, cable thermal
+     withstand S^2 k^2, optional I*sqrt(t)/k short-circuit area check,
+     and automatic cable candidate selection.
+
+2) Lampiran 2.xlsx
+   - Conductor Sizing sheet (IEEE Std 80:2000 equation used by workbook).
+   - Step & Touch Voltage sheet.
+   - Grounding resistance equations from L1 - WTIP (R1, R2, R12, Rg).
+
+Important note:
+The uploaded Step & Touch Voltage worksheet contains an inconsistent reference
+in the 50-kg touch-voltage cell. The application uses the consistent IEEE 80
+expression IB*(RB + 1.5*Cs*rho_s) for both 50-kg and 70-kg cases, and this is
+explicitly disclosed in the UI.
+
+This software remains an engineering calculation aid. Verify project inputs,
+applicable code edition, cable manufacturer data, protective-device data,
+and final design assumptions independently.

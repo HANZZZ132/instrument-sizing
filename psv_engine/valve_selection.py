@@ -1,6 +1,6 @@
 import math
 
-# API 520 Standard Effective Orifice Areas (sq. inch)
+# API 526 Standard Effective Orifice Areas (sq. inch)
 API_ORIFICE_AREAS = {
     'D': 0.110,
     'E': 0.196,
