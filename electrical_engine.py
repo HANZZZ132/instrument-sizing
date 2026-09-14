@@ -346,6 +346,72 @@ def lightning_lps_earthing(
     }
 
 
+def nfpa780_rolling_sphere_2000(
+    higher_height_m: float,
+    lower_protected_height_m: float = 0.0,
+) -> Dict[str, float | str | bool]:
+    """NFPA 780 (2000) §3.7.3 rolling-sphere horizontal protection distance.
+
+    The uploaded edition uses a 150 ft (46 m) rolling-sphere radius. Section
+    3.7.3.4 gives the USC relationship:
+        d = sqrt[h1(300-h1) - h2(300-h2)]
+    where h1 and h2 are in feet. This implementation converts SI inputs to
+    feet, evaluates the published equation, then converts d back to metres.
+
+    This is a geometry screening calculation only. It does not replace a full
+    NFPA 780 layout, bonding, conductor, grounding, surge, or inspection study.
+    The uploaded NFPA 780 edition explicitly excludes ESE systems.
+    """
+    h1_m = float(higher_height_m)
+    h2_m = float(lower_protected_height_m)
+    if h1_m <= 0:
+        raise ValueError("Higher strike-termination / roof height must be > 0 m.")
+    if h2_m < 0:
+        raise ValueError("Protected lower-plane height cannot be negative.")
+    if h2_m >= h1_m:
+        raise ValueError("Lower protected height h2 must be below higher height h1.")
+
+    FT_PER_M = 3.280839895013123
+    M_PER_FT = 1.0 / FT_PER_M
+    sphere_radius_ft = 150.0
+    sphere_radius_m = sphere_radius_ft * M_PER_FT
+    h1_ft = h1_m * FT_PER_M
+    h2_ft = h2_m * FT_PER_M
+
+    height_difference_ft = h1_ft - h2_ft
+    if height_difference_ft > sphere_radius_ft + 1e-9:
+        raise ValueError(
+            "NFPA 780 §3.7.3.4 formula requires the height difference h1-h2 to be 150 ft (46 m) or less."
+        )
+    if h1_ft > sphere_radius_ft + 1e-9:
+        high_rise_note = (
+            "Higher point exceeds 150 ft (46 m). NFPA 780 §3.7.3.2 applies additional high-rise zone-of-protection "
+            "limitations; use this result only as a screening geometry and perform the full layout analysis."
+        )
+    else:
+        high_rise_note = ""
+
+    radicand = h1_ft * (2.0 * sphere_radius_ft - h1_ft) - h2_ft * (2.0 * sphere_radius_ft - h2_ft)
+    if radicand < -1e-9:
+        raise ValueError("Rolling-sphere geometry produced a negative radicand; review the entered heights.")
+    d_ft = math.sqrt(max(radicand, 0.0))
+    d_m = d_ft * M_PER_FT
+
+    return {
+        "Method": "NFPA 780 (2000) §3.7.3 Rolling Sphere",
+        "Sphere_Radius_ft": sphere_radius_ft,
+        "Sphere_Radius_m": sphere_radius_m,
+        "Higher_Height_h1_m": h1_m,
+        "Lower_Protected_Height_h2_m": h2_m,
+        "Height_Difference_m": h1_m - h2_m,
+        "Horizontal_Protected_Distance_m": d_m,
+        "Horizontal_Protected_Distance_ft": d_ft,
+        "High_Rise_Additional_Analysis": bool(h1_ft > sphere_radius_ft),
+        "Note": high_rise_note,
+        "ESE_In_Scope": False,
+    }
+
+
 # Minimal regression checks copied from the uploaded calculation samples.
 def self_test() -> Dict[str, bool]:
     # 400 VAC feeder sample: 360 kW, pf .8, 4C 185, 3 runs, K=.66, L=35m
@@ -359,4 +425,136 @@ def self_test() -> Dict[str, bool]:
     step_ok = abs(st["Cs"] - 0.7045517241) < 1e-8 and abs(st["Estep70_V"] - 917.55677) < 0.01
     lps = lightning_lps_earthing()
     lightning_ok = abs(lps["Rg_ohm"] - 2.33215259516) < 1e-8 and lps["Acceptable"]
-    return {"cable_sample": cable_ok, "ground_conductor_sample": conductor_ok, "step_touch_sample": step_ok, "lightning_lps_sample": lightning_ok}
+    ese = ese_protection_radius_nfc17102("I", 60.0, 5.0)
+    ese_ok = abs(ese["Rp_m"] - math.sqrt(6175.0)) < 1e-9
+    nfpa = nfpa780_rolling_sphere_2000(7.62, 0.0)  # 25 ft higher point to grade
+    nfpa_ok = abs(nfpa["Horizontal_Protected_Distance_ft"] - math.sqrt(25.0 * 275.0)) < 1e-6
+    return {"cable_sample": cable_ok, "ground_conductor_sample": conductor_ok, "step_touch_sample": step_ok, "lightning_lps_sample": lightning_ok, "ese_radius_sample": ese_ok, "nfpa780_rolling_sphere_sample": nfpa_ok}
+
+
+def ese_protection_radius_nfc17102(
+    protection_level: str = "I",
+    ese_efficiency_us: float = 60.0,
+    height_over_protected_plane_m: float = 5.0,
+    required_radius_m: float | None = None,
+    building_height_m: float | None = None,
+    ese_tip_elevation_m: float | None = None,
+    system_type: str = "Non-isolated",
+    ese_count: int = 1,
+    apply_level_i_plus_plus: bool = False,
+) -> Dict[str, float | str | bool | int | None]:
+    """ESE protection-radius screening per NF C 17-102:2011, clauses 5.2.2-5.2.5.
+
+    Parameters
+    ----------
+    protection_level:
+        Lightning protection level I, II, III or IV.
+    ese_efficiency_us:
+        ESEAT efficiency ΔT in microseconds. NF C 17-102 caps the value at 60 µs.
+        In the standard, Δ [m] = ΔT [s] × 10^6, so for a value entered in µs,
+        the numerical value of Δ in metres is the same number.
+    height_over_protected_plane_m:
+        ESEAT tip height h above the horizontal plane through the furthest point
+        of the object to be protected. The standard installation minimum is 2 m.
+    required_radius_m:
+        Optional required horizontal coverage radius for a simple pass/fail check.
+    building_height_m / ese_tip_elevation_m:
+        Optional values used only to raise the high-rise warning in clause 5.2.3.4.
+    system_type:
+        "Non-isolated" or "Isolated"; used to report down-conductor guidance.
+    ese_count:
+        Number of ESEATs, used only for minimum specific-down-conductor guidance.
+    apply_level_i_plus_plus:
+        Applies the clause 5.2.3.5 Level I++ 40% reduction to the Level-I radius.
+        This does NOT validate the additional Level-I+ bonding/natural-conductor
+        requirements; it only applies the radius reduction.
+    """
+    lvl = str(protection_level).strip().upper()
+    r_map = {"I": 20.0, "II": 30.0, "III": 45.0, "IV": 60.0}
+    if lvl not in r_map:
+        raise ValueError("Protection level must be I, II, III or IV.")
+    dt = float(ese_efficiency_us)
+    h = float(height_over_protected_plane_m)
+    if dt < 0 or dt > 60:
+        raise ValueError("ESEAT efficiency ΔT must be between 0 and 60 µs per NF C 17-102.")
+    if h < 2.0:
+        raise ValueError("ESEAT tip height h must be at least 2 m above the protected area.")
+    if ese_count < 1:
+        raise ValueError("Number of ESEATs must be at least 1.")
+
+    r = r_map[lvl]
+    delta_m = dt  # Δ = ΔT[s] * 1e6; entering ΔT in µs gives the same numerical value in m.
+
+    def _rp_at_height(hh: float) -> float:
+        radicand = 2.0 * r * hh - hh * hh + delta_m * (2.0 * r + delta_m)
+        if radicand < 0:
+            raise ValueError("The NF C 17-102 protection-radius equation gives a negative radicand for this case.")
+        return math.sqrt(radicand)
+
+    rp5 = _rp_at_height(5.0)
+    if h < 5.0:
+        rp_raw = h * rp5 / 5.0
+        equation = "Rp = h × Rp(5) / 5 (2 m ≤ h ≤ 5 m)"
+    else:
+        rp_raw = _rp_at_height(h)
+        equation = "Rp(h) = √[2rh − h² + Δ(2r + Δ)] (h ≥ 5 m)"
+
+    if apply_level_i_plus_plus:
+        if lvl != "I":
+            raise ValueError("Level I++ radius reduction is applicable to protection Level I only.")
+        rp = 0.60 * rp_raw
+        special_note = "Level I++ selected: protection radius reduced by 40% from the Level-I value. Additional I+ conditions still require engineering verification."
+    else:
+        rp = rp_raw
+        special_note = ""
+
+    req = None if required_radius_m is None else float(required_radius_m)
+    if req is not None and req < 0:
+        raise ValueError("Required radius cannot be negative.")
+    coverage_ok = None if req in (None, 0.0) else rp >= req
+    margin = None if req in (None, 0.0) else rp - req
+
+    high_rise = False
+    if building_height_m is not None and float(building_height_m) > 60.0:
+        high_rise = True
+    if ese_tip_elevation_m is not None and float(ese_tip_elevation_m) > 120.0:
+        high_rise = True
+
+    system_norm = str(system_type).strip().lower()
+    if system_norm.startswith("non"):
+        down_guidance = "For one non-isolated ESEAT: at least 2 down-conductors; at least 1 must be a specific down-conductor."
+        min_specific = ese_count
+        nominal_single_eseat_min = 2
+    elif system_norm.startswith("iso"):
+        down_guidance = "For an isolated ESESystem: at least 1 down-conductor is needed for each ESEAT."
+        min_specific = ese_count
+        nominal_single_eseat_min = 1
+    else:
+        raise ValueError("System type must be Non-isolated or Isolated.")
+
+    if ese_count > 1 and system_norm.startswith("non"):
+        down_guidance += " With multiple ESEATs, down-conductors may be mutualized only after separation-distance assessment; the number of specific down-conductors must be at least the number of ESEATs."
+
+    return {
+        "Protection_Level": lvl,
+        "r_m": r,
+        "DeltaT_us": dt,
+        "Delta_m": delta_m,
+        "Height_h_m": h,
+        "Rp5_m": rp5,
+        "Rp_raw_m": rp_raw,
+        "Rp_m": rp,
+        "Protected_Circular_Area_m2": math.pi * rp * rp,
+        "Equation": equation,
+        "Level_Ipp_Applied": bool(apply_level_i_plus_plus),
+        "Special_Note": special_note,
+        "Required_Radius_m": req,
+        "Coverage_OK": coverage_ok,
+        "Coverage_Margin_m": margin,
+        "High_Rise_Additional_Protection_Required": high_rise,
+        "System_Type": system_type,
+        "ESEAT_Count": int(ese_count),
+        "Minimum_Specific_Downconductors": int(min_specific),
+        "Single_ESEAT_Nominal_Min_Downconductors": int(nominal_single_eseat_min),
+        "Downconductor_Guidance": down_guidance,
+    }

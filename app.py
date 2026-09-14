@@ -354,10 +354,12 @@ if "suite_request" in st.session_state:
 if "nav_request" in st.session_state:
     st.session_state["page"] = st.session_state.pop("nav_request")
 
-INSTRUMENT_PAGES = ["Welcome", "AGA 3 — Orifice Flow", "AGA 8 — Gas Properties", "Control Valve Sizing", "PSV Engineering", "About / Method"]
-ELECTRICAL_PAGES = ["Welcome", "Electrical Sizing", "About / Method"]
+INSTRUMENT_PAGES = ["Welcome", "Instrument Home", "AGA 3 — Orifice Flow", "AGA 8 — Gas Properties", "Control Valve Sizing", "PSV Engineering", "About / Method"]
+ELECTRICAL_PAGES = ["Welcome", "Electrical Home", "Electrical Sizing", "About / Method"]
 NAV_LABELS = {
-    "Welcome": "⌂  Home",
+    "Welcome": "⌂  Main Welcome",
+    "Instrument Home": "🧪  Instrument Home",
+    "Electrical Home": "⚡  Electrical Home",
     "AGA 3 — Orifice Flow": "◫  AGA 3 · Orifice Flow",
     "AGA 8 — Gas Properties": "⬡  AGA 8 · Gas Properties",
     "Control Valve Sizing": "◉  Control Valve Sizing",
@@ -389,91 +391,100 @@ with st.sidebar:
 inject_suite_theme(suite)
 
 if page == "Welcome":
-    if st.session_state.get("suite", "Instrument") == "Instrument":
-        hero_kicker = "●  Process & Instrument Engineering"
-        hero_title = "INSTRUMENT<br>SIZING"
-        hero_desc = "A process-and-instrument focused workspace with a more instrument-dominant visual identity: control valve, PSV, metering orifice, pressure gauge, and PLC vibes. The modules remain focused on AGA 3, AGA 8, Control Valve sizing, and PSV engineering."
-        hero_chips = '<span class="hero-chip">Control Valve</span><span class="hero-chip">PSV</span><span class="hero-chip">Metering Orifice</span><span class="hero-chip">Gauge</span><span class="hero-chip">PLC</span>'
-        active_badge = "🧪 Instrument Workspace Active · Control Valve · PSV · Metering · Gauge · PLC"
-    else:
-        hero_kicker = "●  Electrical Engineering Workspace"
-        hero_title = "ELECTRICAL<br>SIZING"
-        hero_desc = "A dedicated electrical workspace with a stronger electrical identity: lightning, cable systems, and panel-board / switchboard vibes. The calculation content remains focused on cable sizing, voltage drop, grounding, step and touch voltage, grounding grid, and lightning-protection earthing."
-        hero_chips = '<span class="hero-chip">Lightning</span><span class="hero-chip">Cable</span><span class="hero-chip">Panels</span><span class="hero-chip">Grounding</span><span class="hero-chip">Electrical Theme</span>'
-        active_badge = "⚡ Electrical Workspace Active · Lightning · Cable · Panels"
-
+    # Neutral landing page: choose the discipline first.
     st.markdown(
-        f'<div class="hero">'
-        f'<div class="hero-kicker">{hero_kicker}</div>'
-        f'<h1>{hero_title}</h1>'
-        f'<div class="desc">{hero_desc}</div>'
-        f'<div class="hero-chips">{hero_chips}</div>'
-        f'</div>',
+        '<div class="hero">'
+        '<div class="hero-kicker">●  ENGINEERING CALCULATION TOOLKIT</div>'
+        '<h1>WELCOME TO<br>INSTRUMENT SIZING</h1>'
+        '<div class="desc">Choose the engineering workspace you want to use. Instrument and Electrical are separated so their menus, modules, and visual identity do not mix.</div>'
+        '</div>',
         unsafe_allow_html=True,
     )
-    st.markdown(f'<div class="suite-badge" style="padding:.75rem 1rem;border-radius:14px;margin:.2rem 0 1rem 0;font-weight:750;">{active_badge}</div>', unsafe_allow_html=True)
 
-    active_image = INSTRUMENT_HERO_IMAGE if st.session_state.get("suite", "Instrument") == "Instrument" else ELECTRICAL_HERO_IMAGE
-    if active_image.exists():
-        st.image(str(active_image), use_container_width=True)
-
-    st.markdown('<div class="workflow">'
-                '<div class="workflow-item"><b>01 · Choose</b><span>Select Instrument or Electrical</span></div>'
-                '<div class="workflow-item"><b>02 · Enter</b><span>Fill in equipment and process data</span></div>'
-                '<div class="workflow-item"><b>03 · Calculate</b><span>Run the selected sizing model</span></div>'
-                '<div class="workflow-item"><b>04 · Review</b><span>Check outputs and engineering flags</span></div>'
-                '</div>', unsafe_allow_html=True)
-
+    st.markdown("### Choose your workspace")
     left_ws, right_ws = st.columns(2)
+
     with left_ws:
+        if INSTRUMENT_HERO_IMAGE.exists():
+            st.image(str(INSTRUMENT_HERO_IMAGE), use_container_width=True)
         st.markdown(
-            '<div class="module-card"><div class="mod-icon">🧪</div><h3>Instrument Workspace</h3><p>Contains AGA 3, AGA 8 DETAIL, Control Valve Sizing, and PSV Engineering with a stronger instrument-style look inspired by control valves, PSV, metering orifice, gauges, and PLC panels.</p><span class="mod-tag">CV · PSV · Orifice · Gauge · PLC</span></div>',
+            '<div class="module-card"><div class="mod-icon">🧪</div><h3>Instrument Workspace</h3>'
+            '<p>Process & instrumentation calculations for metering, gas properties, control valves, and pressure safety valves.</p>'
+            '<span class="mod-tag">AGA 3 · AGA 8 · Control Valve · PSV</span></div>',
             unsafe_allow_html=True,
         )
-        if st.button("Open Instrument Workspace  →", key="go_suite_instr", type="primary", use_container_width=True):
-            goto("AGA 3 — Orifice Flow", suite="Instrument")
-        st.caption("Modules inside Instrument: AGA 3, AGA 8 Gas Properties, Control Valve Sizing, and PSV Engineering with visual cues inspired by control valve, PSV, metering orifice, gauge, and PLC hardware.")
+        if st.button("Enter Instrument Workspace  →", key="enter_instrument", type="primary", use_container_width=True):
+            goto("Instrument Home", suite="Instrument")
 
     with right_ws:
+        if ELECTRICAL_HERO_IMAGE.exists():
+            st.image(str(ELECTRICAL_HERO_IMAGE), use_container_width=True)
         st.markdown(
-            '<div class="module-card"><div class="mod-icon">⚡</div><h3>Electrical Workspace</h3><p>Contains cable sizing, voltage drop, grounding conductor sizing, step & touch voltage, grounding grid, and lightning-protection earthing calculations with a more electrical-style look inspired by lightning, cables, and panels.</p><span class="mod-tag">Lightning · Cable · Panels</span></div>',
+            '<div class="module-card"><div class="mod-icon">⚡</div><h3>Electrical Workspace</h3>'
+            '<p>Electrical calculations for cables, voltage drop, grounding, step/touch voltage, and lightning protection.</p>'
+            '<span class="mod-tag">Cable · Grounding · Lightning · Panels</span></div>',
             unsafe_allow_html=True,
         )
-        if st.button("Open Electrical Workspace  →", key="go_suite_elec", use_container_width=True):
-            goto("Electrical Sizing", suite="Electrical")
-        st.caption("Modules inside Electrical: Cable Sizing & Voltage Drop, IEEE 80 Grounding, Step/Touch, Ground Grid Resistance, and Lightning Protection Earthing with visual cues inspired by lightning, cable routing, and electrical panels.")
+        if st.button("Enter Electrical Workspace  →", key="enter_electrical", use_container_width=True):
+            goto("Electrical Home", suite="Electrical")
 
-    st.markdown("### Quick module access")
-    if st.session_state.get("suite", "Instrument") == "Instrument":
-        c1, c2, c3 = st.columns(3)
-        c4, _sp = st.columns([1,2])
-        cards = [
-            (c1, "◫", "AGA 3", "Orifice gas flow and inverse bore sizing with discharge-coefficient checks.", "Metering", "AGA 3 — Orifice Flow", "Instrument"),
-            (c2, "⬡", "AGA 8 DETAIL", "Z-factor, gas density, molecular weight and Fpv from 21-component composition.", "Gas properties", "AGA 8 — Gas Properties", "Instrument"),
-            (c3, "◉", "Control Valve", "Liquid, gas and steam Cv/Kv sizing with choked-flow and valve checks.", "IEC / ISA", "Control Valve Sizing", "Instrument"),
-            (c4, "◆", "PSV Engineering", "Relief sizing, scenario comparison, API orifice selection and piping checks.", "Relief systems", "PSV Engineering", "Instrument"),
-        ]
-    else:
-        c1, _sp = st.columns([1,2])
-        cards = [
-            (c1, "⚡", "Electrical", "Cable sizing, voltage drop, grounding conductor, step/touch voltage and grid resistance.", "Cable & grounding", "Electrical Sizing", "Electrical"),
-        ]
-    for col, icon, title, desc, tag, target, target_suite in cards:
+    st.info("The sidebar workspace selector can also switch disciplines. Each discipline now has its own Home page and its own navigation list.")
+
+elif page == "Instrument Home":
+    st.markdown(
+        '<div class="hero">'
+        '<div class="hero-kicker">●  PROCESS & INSTRUMENT ENGINEERING</div>'
+        '<h1>INSTRUMENT<br>SIZING</h1>'
+        '<div class="desc">Dedicated process and instrumentation workspace for metering orifice, gas properties, control valve sizing, pressure safety valves, gauges, and PLC-oriented engineering workflows.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    if INSTRUMENT_HERO_IMAGE.exists():
+        st.image(str(INSTRUMENT_HERO_IMAGE), use_container_width=True)
+
+    st.markdown("### Instrument modules")
+    c1, c2, c3 = st.columns(3)
+    c4, _ = st.columns([1, 2])
+    cards = [
+        (c1, "◫", "AGA 3", "Orifice gas flow and inverse bore sizing.", "Metering", "AGA 3 — Orifice Flow"),
+        (c2, "⬡", "AGA 8 DETAIL", "Gas Z-factor, density, MW and Fpv.", "Gas Properties", "AGA 8 — Gas Properties"),
+        (c3, "◉", "Control Valve", "Liquid, gas and steam Cv/Kv sizing.", "Valve Sizing", "Control Valve Sizing"),
+        (c4, "◆", "PSV Engineering", "Relief sizing, API orifice selection and scenario checks.", "Relief Systems", "PSV Engineering"),
+    ]
+    for col, icon, title, desc, tag, target in cards:
         with col:
             st.markdown(
                 f'<div class="module-card"><div class="mod-icon">{icon}</div><h3>{title}</h3><p>{desc}</p><span class="mod-tag">{tag}</span></div>',
                 unsafe_allow_html=True,
             )
-            if st.button(f"Open {title}  →", key=f"go_{target}", use_container_width=True):
-                goto(target, suite=target_suite)
+            if st.button(f"Open {title}  →", key=f"inst_{target}", use_container_width=True):
+                goto(target, suite="Instrument")
 
-    st.markdown("### Connected workflow")
-    a, b = st.columns([1.25, .75])
-    with a:
-        st.info("**Instrument workspace:** AGA 8 → AGA 3 / Control Valve transfer remains available during the same session. **Electrical workspace:** cable and grounding calculations stay separated for a cleaner navigation flow.")
-    with b:
-        current_suite = st.session_state.get("suite", "Instrument")
-        st.markdown(f'<div class="status-ok"><b>✓ Active workspace: {current_suite}</b><br><span style="font-size:.82rem;opacity:.75">You can change the workspace anytime from this page or from the sidebar.</span></div>', unsafe_allow_html=True)
+    st.success("Instrument workspace only. Electrical modules are intentionally excluded from this navigation.")
+
+elif page == "Electrical Home":
+    st.markdown(
+        '<div class="hero">'
+        '<div class="hero-kicker">●  ELECTRICAL ENGINEERING</div>'
+        '<h1>ELECTRICAL<br>SIZING</h1>'
+        '<div class="desc">Dedicated electrical workspace for cable sizing, voltage drop, grounding, step & touch voltage, ground-grid resistance, and conventional/ESE lightning protection.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    if ELECTRICAL_HERO_IMAGE.exists():
+        st.image(str(ELECTRICAL_HERO_IMAGE), use_container_width=True)
+
+    st.markdown("### Electrical modules")
+    st.markdown(
+        '<div class="module-card"><div class="mod-icon">⚡</div><h3>Electrical Sizing</h3>'
+        '<p>Cable sizing, voltage drop, grounding, step/touch voltage, earth-grid resistance, NFPA 780 rolling sphere, and NF C 17-102 ESE.</p>'
+        '<span class="mod-tag">Cable · Grounding · Lightning · Panels</span></div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("Open Electrical Sizing  →", key="elec_open_sizing", type="primary", use_container_width=True):
+        goto("Electrical Sizing", suite="Electrical")
+
+    st.success("Electrical workspace only. AGA, Control Valve and PSV modules are intentionally excluded from this navigation.")
 
 elif page == "AGA 3 — Orifice Flow":
     page_header("AGA 3 — Orifice Flow", "Calculate base flow from a known bore, or solve the reference orifice diameter for a target base flow.")
@@ -1012,7 +1023,40 @@ elif page == "Electrical Sizing":
             nfpa_calc = st.form_submit_button("Calculate NFPA 780 Rolling Sphere", type="primary", use_container_width=True)
         if nfpa_calc:
             try:
-                nr = electrical.nfpa780_rolling_sphere_2000(h1, h2)
+                if hasattr(electrical, "nfpa780_rolling_sphere_2000"):
+                    nr = electrical.nfpa780_rolling_sphere_2000(h1, h2)
+                else:
+                    # Compatibility fallback if the deployed repository still
+                    # contains an older electrical_engine.py during update.
+                    import math
+                    FT_PER_M = 3.280839895013123
+                    M_PER_FT = 1.0 / FT_PER_M
+                    h1_m, h2_m = float(h1), float(h2)
+                    if h1_m <= 0:
+                        raise ValueError("Higher strike-termination / roof height must be > 0 m.")
+                    if h2_m < 0 or h2_m >= h1_m:
+                        raise ValueError("Lower protected height h2 must be >= 0 and below h1.")
+                    R_ft = 150.0
+                    h1_ft, h2_ft = h1_m * FT_PER_M, h2_m * FT_PER_M
+                    if (h1_ft - h2_ft) > R_ft + 1e-9:
+                        raise ValueError("Height difference h1-h2 must be 150 ft (46 m) or less for this NFPA 780 geometry.")
+                    radicand = h1_ft * (2.0 * R_ft - h1_ft) - h2_ft * (2.0 * R_ft - h2_ft)
+                    if radicand < -1e-9:
+                        raise ValueError("Rolling-sphere geometry produced a negative radicand; review the heights.")
+                    d_ft = math.sqrt(max(radicand, 0.0))
+                    nr = {
+                        "Method": "NFPA 780 (2000) §3.7.3 Rolling Sphere",
+                        "Sphere_Radius_ft": R_ft,
+                        "Sphere_Radius_m": R_ft * M_PER_FT,
+                        "Higher_Height_h1_m": h1_m,
+                        "Lower_Protected_Height_h2_m": h2_m,
+                        "Height_Difference_m": h1_m - h2_m,
+                        "Horizontal_Protected_Distance_m": d_ft * M_PER_FT,
+                        "Horizontal_Protected_Distance_ft": d_ft,
+                        "High_Rise_Additional_Analysis": bool(h1_ft > R_ft),
+                        "Note": "Higher point exceeds 150 ft (46 m); perform the full NFPA 780 high-rise zone-of-protection analysis." if h1_ft > R_ft else "",
+                        "ESE_In_Scope": False,
+                    }
                 nr["Required_Distance_m"] = None if req_d <= 0 else req_d
                 nr["Coverage_OK"] = None if req_d <= 0 else nr["Horizontal_Protected_Distance_m"] >= req_d
                 nr["Coverage_Margin_m"] = None if req_d <= 0 else nr["Horizontal_Protected_Distance_m"] - req_d
