@@ -25,7 +25,7 @@ from psv_engine.unit_converter import (
 )
 
 APP_TITLE = "Instrument Sizing"
-APP_VERSION = "Web 1.4.3 · AGA 7 Calculate"
+APP_VERSION = "Web 1.4.5 · Compact Inputs"
 BASE_DIR = Path(__file__).resolve().parent
 INSTRUMENT_HERO_IMAGE = BASE_DIR / "assets" / "instrument_workspace_hero.png"
 ELECTRICAL_HERO_IMAGE = BASE_DIR / "assets" / "electrical_workspace_hero.png"
@@ -284,14 +284,23 @@ def _install_auto_invalidation():
         if _original is None or getattr(_original, "_is_autoclear_wrapped", False):
             continue
 
-        def _make_wrapper(original):
+        def _make_wrapper(original, widget_name):
             def _wrapped(self, *args, **kwargs):
                 kwargs.setdefault("on_change", invalidate_current_page_results)
+
+                # Compact numeric entry:
+                # whole-number defaults are displayed without forced trailing zeroes
+                # (e.g. 510 instead of 510.000000), while users may still type
+                # decimal values whenever the underlying widget is float-based.
+                # This changes display formatting only; calculation precision is untouched.
+                if widget_name == "number_input":
+                    kwargs["format"] = "%g"
+
                 return original(self, *args, **kwargs)
             _wrapped._is_autoclear_wrapped = True
             return _wrapped
 
-        setattr(DeltaGenerator, _name, _make_wrapper(_original))
+        setattr(DeltaGenerator, _name, _make_wrapper(_original, _name))
 
 
 _install_auto_invalidation()
@@ -463,6 +472,7 @@ with st.sidebar:
     page = st.radio("Navigation", PAGES, key="page", label_visibility="collapsed", format_func=lambda x: NAV_LABELS[x])
     st.divider()
     st.caption("↻ Results automatically disappear when calculator inputs are changed. Recalculate to show the new result.")
+    st.caption("123  Numeric inputs use compact display: whole-number defaults stay clean; enter decimals only when needed.")
     st.caption("Calculation aid for engineering screening and sizing. Verify final design against project standards and certified vendor data.")
 
 inject_suite_theme(suite)
@@ -608,15 +618,15 @@ elif page == "AGA 7 — Turbine Meter":
                 else:
                     st.warning("No AGA 8 result is available yet.")
 
-            basis = st.radio(
-                "Flow-range pairing",
-                ["Project paired conditions", "Conservative envelope"],
-                horizontal=True,
-                key="a7_pairing",
-                help="Project paired: Qmin@Pmin and Qmax@Pmax. Conservative envelope: Qmin@Pmax and Qmax@Pmin.",
-            )
-            legacy = st.checkbox("Legacy Excel match: use 273.0 instead of 273.15 for °C → K", value=False, key="a7_legacy_range")
-            continuous_pct = st.slider("Continuous-use target (% of screening Qmax)", min_value=50, max_value=100, value=int(st.session_state["a7_cont"]), step=5, key="a7_cont_slider")
+            # Simplified AGA 7 sizing defaults:
+            # - Project paired conditions: Qmin@Pmin and Qmax@Pmax
+            # - Standard absolute temperature conversion: °C + 273.15
+            # - Continuous-use screening target: 80% of nominal Qmax
+            basis = "Project paired conditions"
+            legacy = False
+            continuous_pct = 80
+
+            st.caption("Sizing basis: Qmin @ Pmin, Qmax @ Pmax · standard °C→K (+273.15) · 80% continuous-use screening target")
 
             calculate_range = st.button(
                 "Calculate Flow Range / G-Size",
@@ -676,8 +686,6 @@ elif page == "AGA 7 — Turbine Meter":
                 table = pd.DataFrame(aga7_engine.g_rating_table(saved_continuous_pct/100.0))
                 st.dataframe(table, hide_index=True, use_container_width=True)
 
-        if legacy:
-            st.caption("Legacy Excel regression: with Qmin=515 Sm³/h @ 1 barg and Qmax=1283 Sm³/h @ 4 barg, T=32°C, Tb=15.555556°C, Pb=1.01325 bar abs and Zf/Zb=1, the project paired results are approximately 273.966 and 274.091 m³/h.")
 
     with mode2:
         st.markdown("##### Single base / line-flow conversion")
