@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 import AGA3
+import aga7_engine
 import aga8_detail
 import electrical_engine as electrical
 
@@ -24,7 +25,7 @@ from psv_engine.unit_converter import (
 )
 
 APP_TITLE = "Instrument Sizing"
-APP_VERSION = "Web 1.2.8 · Code Audited"
+APP_VERSION = "Web 1.4.2 · Auto-Clear Results"
 BASE_DIR = Path(__file__).resolve().parent
 INSTRUMENT_HERO_IMAGE = BASE_DIR / "assets" / "instrument_workspace_hero.png"
 ELECTRICAL_HERO_IMAGE = BASE_DIR / "assets" / "electrical_workspace_hero.png"
@@ -222,6 +223,79 @@ def _default(key, value):
         st.session_state[key] = value
 
 
+CALC_RESULT_KEYS = [
+    "aga3_last", "aga3_last_mode", "aga8_last", "cv_last", "cv_last_service",
+    "electrical_last", "electrical_candidates", "electrical_cb_i2t", "electrical_last_mode",
+    "ground_conductor_last", "step_touch_last", "grid_resistance_last",
+    "lightning_lps_last", "nfpa780_last", "psv_last"
+]
+
+PAGE_RESULT_KEYS = {
+    "AGA 3 — Orifice Flow": ["aga3_last", "aga3_last_mode"],
+    "AGA 8 — Gas Properties": ["aga8_last"],
+    "Control Valve Sizing": ["cv_last", "cv_last_service"],
+    "Electrical Sizing": [
+        "electrical_last", "electrical_candidates", "electrical_cb_i2t", "electrical_last_mode",
+        "ground_conductor_last", "step_touch_last", "grid_resistance_last",
+        "lightning_lps_last", "nfpa780_last",
+    ],
+    "PSV Engineering": ["psv_last"],
+}
+
+def clear_calculation_results():
+    """Manual fallback: clear all displayed outputs without deleting user inputs."""
+    for _key in CALC_RESULT_KEYS:
+        st.session_state.pop(_key, None)
+
+
+def invalidate_current_page_results():
+    """Automatically hide stale output as soon as an input on the current calculator changes."""
+    _page = st.session_state.get("page")
+    for _key in PAGE_RESULT_KEYS.get(_page, []):
+        st.session_state.pop(_key, None)
+
+
+def begin_new_result(*keys):
+    """Invalidate previous output before a calculation so failed/revised cases never show stale results."""
+    for _key in keys:
+        st.session_state.pop(_key, None)
+
+
+def _install_auto_invalidation():
+    """
+    Streamlit forms buffer input changes until submit, so this version uses normal
+    bordered containers instead. These wrappers attach an on_change callback to
+    ordinary input widgets, causing the displayed result for the active calculator
+    to disappear immediately when the user edits an input.
+    """
+    try:
+        from streamlit.delta_generator import DeltaGenerator
+    except Exception:
+        return
+
+    widget_methods = (
+        "number_input", "selectbox", "checkbox", "text_input",
+        "segmented_control", "data_editor", "multiselect", "slider",
+    )
+
+    for _name in widget_methods:
+        _original = getattr(DeltaGenerator, _name, None)
+        if _original is None or getattr(_original, "_is_autoclear_wrapped", False):
+            continue
+
+        def _make_wrapper(original):
+            def _wrapped(self, *args, **kwargs):
+                kwargs.setdefault("on_change", invalidate_current_page_results)
+                return original(self, *args, **kwargs)
+            _wrapped._is_autoclear_wrapped = True
+            return _wrapped
+
+        setattr(DeltaGenerator, _name, _make_wrapper(_original))
+
+
+_install_auto_invalidation()
+
+
 def inject_suite_theme(active_suite: str):
     if active_suite == "Electrical":
         css = """
@@ -354,13 +428,14 @@ if "suite_request" in st.session_state:
 if "nav_request" in st.session_state:
     st.session_state["page"] = st.session_state.pop("nav_request")
 
-INSTRUMENT_PAGES = ["Welcome", "Instrument Home", "AGA 3 — Orifice Flow", "AGA 8 — Gas Properties", "Control Valve Sizing", "PSV Engineering", "About / Method"]
+INSTRUMENT_PAGES = ["Welcome", "Instrument Home", "AGA 3 — Orifice Flow", "AGA 7 — Turbine Meter", "AGA 8 — Gas Properties", "Control Valve Sizing", "PSV Engineering", "About / Method"]
 ELECTRICAL_PAGES = ["Welcome", "Electrical Home", "Electrical Sizing", "About / Method"]
 NAV_LABELS = {
     "Welcome": "⌂  Main Welcome",
     "Instrument Home": "🧪  Instrument Home",
     "Electrical Home": "⚡  Electrical Home",
     "AGA 3 — Orifice Flow": "◫  AGA 3 · Orifice Flow",
+    "AGA 7 — Turbine Meter": "◎  AGA 7 · Turbine Meter",
     "AGA 8 — Gas Properties": "⬡  AGA 8 · Gas Properties",
     "Control Valve Sizing": "◉  Control Valve Sizing",
     "Electrical Sizing": "⚡  Electrical Sizing",
@@ -386,6 +461,7 @@ with st.sidebar:
     st.caption("NAVIGATION")
     page = st.radio("Navigation", PAGES, key="page", label_visibility="collapsed", format_func=lambda x: NAV_LABELS[x])
     st.divider()
+    st.caption("↻ Results automatically disappear when calculator inputs are changed. Recalculate to show the new result.")
     st.caption("Calculation aid for engineering screening and sizing. Verify final design against project standards and certified vendor data.")
 
 inject_suite_theme(suite)
@@ -394,9 +470,9 @@ if page == "Welcome":
     # Neutral landing page: choose the discipline first.
     st.markdown(
         '<div class="hero">'
-        '<div class="hero-kicker">●  ENGINEERING CALCULATION TOOLKIT</div>'
-        '<h1>WELCOME TO<br>INSTRUMENT SIZING</h1>'
-        '<div class="desc">Choose the engineering workspace you want to use. Instrument and Electrical are separated so their menus, modules, and visual identity do not mix.</div>'
+        '<div class="hero-kicker">●  INTEGRATED ENGINEERING PLATFORM</div>'
+        '<h1>ENGINEERING<br>CALCULATION HUB</h1>'
+        '<div class="desc">One platform for dedicated Instrument and Electrical engineering workspaces — built for faster calculations, cleaner navigation, and focused technical workflows.</div>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -409,8 +485,8 @@ if page == "Welcome":
             st.image(str(INSTRUMENT_HERO_IMAGE), use_container_width=True)
         st.markdown(
             '<div class="module-card"><div class="mod-icon">🧪</div><h3>Instrument Workspace</h3>'
-            '<p>Process & instrumentation calculations for metering, gas properties, control valves, and pressure safety valves.</p>'
-            '<span class="mod-tag">AGA 3 · AGA 8 · Control Valve · PSV</span></div>',
+            '<p>Process & instrumentation calculations for orifice metering, turbine metering, gas properties, control valves, and pressure safety valves.</p>'
+            '<span class="mod-tag">AGA 3 · AGA 7 · AGA 8 · Control Valve · PSV</span></div>',
             unsafe_allow_html=True,
         )
         if st.button("Enter Instrument Workspace  →", key="enter_instrument", type="primary", use_container_width=True):
@@ -435,7 +511,7 @@ elif page == "Instrument Home":
         '<div class="hero">'
         '<div class="hero-kicker">●  PROCESS & INSTRUMENT ENGINEERING</div>'
         '<h1>INSTRUMENT<br>SIZING</h1>'
-        '<div class="desc">Dedicated process and instrumentation workspace for metering orifice, gas properties, control valve sizing, pressure safety valves, gauges, and PLC-oriented engineering workflows.</div>'
+        '<div class="desc">Dedicated process and instrumentation workspace for orifice metering, turbine-meter conversion and screening, gas properties, control valve sizing, pressure safety valves, gauges, and PLC-oriented engineering workflows.</div>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -444,12 +520,13 @@ elif page == "Instrument Home":
 
     st.markdown("### Instrument modules")
     c1, c2, c3 = st.columns(3)
-    c4, _ = st.columns([1, 2])
+    c4, c5, _ = st.columns([1, 1, 1])
     cards = [
-        (c1, "◫", "AGA 3", "Orifice gas flow and inverse bore sizing.", "Metering", "AGA 3 — Orifice Flow"),
-        (c2, "⬡", "AGA 8 DETAIL", "Gas Z-factor, density, MW and Fpv.", "Gas Properties", "AGA 8 — Gas Properties"),
-        (c3, "◉", "Control Valve", "Liquid, gas and steam Cv/Kv sizing.", "Valve Sizing", "Control Valve Sizing"),
-        (c4, "◆", "PSV Engineering", "Relief sizing, API orifice selection and scenario checks.", "Relief Systems", "PSV Engineering"),
+        (c1, "◫", "AGA 3", "Orifice gas flow and inverse bore sizing.", "Orifice Metering", "AGA 3 — Orifice Flow"),
+        (c2, "◎", "AGA 7", "Turbine-meter base/line flow conversion and meter-range screening.", "Turbine Meter", "AGA 7 — Turbine Meter"),
+        (c3, "⬡", "AGA 8 DETAIL", "Gas Z-factor, density, MW and Fpv.", "Gas Properties", "AGA 8 — Gas Properties"),
+        (c4, "◉", "Control Valve", "Liquid, gas and steam Cv/Kv sizing.", "Valve Sizing", "Control Valve Sizing"),
+        (c5, "◆", "PSV Engineering", "Relief sizing, API orifice selection and scenario checks.", "Relief Systems", "PSV Engineering"),
     ]
     for col, icon, title, desc, tag, target in cards:
         with col:
@@ -486,6 +563,140 @@ elif page == "Electrical Home":
 
     st.success("Electrical workspace only. AGA, Control Valve and PSV modules are intentionally excluded from this navigation.")
 
+elif page == "AGA 7 — Turbine Meter":
+    page_header("AGA 7 — Turbine Meter", "Convert between base and flowing volume, reproduce the project workbook workflow, and screen turbine-meter G rating against actual line flow.")
+
+    for k, v in {
+        "a7_qmax": 1283.0, "a7_qmin": 515.0,
+        "a7_pmin": 1.0, "a7_pmax": 4.0,
+        "a7_pb": 1.01325, "a7_patm": 1.013253,
+        "a7_tf": 32.0, "a7_tb": 15.555556,
+        "a7_zratio": 1.0, "a7_cont": 80.0,
+        "a7_qf_single": 250.0, "a7_pg_single": 4.0,
+    }.items(): _default(k, v)
+
+    st.info("**AGA 7 Appendix B basis.** Pressure in the gas-law conversion is absolute. The project workbook is reproduced as a selectable legacy mode, while standard mode uses °C + 273.15 K.")
+
+    mode1, mode2, mode3 = st.tabs(["Flow Range / G-Size", "Single Conversion", "Method & Source"])
+
+    with mode1:
+        left, right = st.columns([1.05, .95])
+        with left:
+            st.markdown("##### Base-condition demand")
+            a,b = st.columns(2)
+            qmin = a.number_input("Base flow minimum (Sm³/h)", min_value=0.0, key="a7_qmin", format="%.6f")
+            qmax = b.number_input("Base flow maximum (Sm³/h)", min_value=0.0, key="a7_qmax", format="%.6f")
+            a,b = st.columns(2)
+            pmin = a.number_input("Operating pressure minimum (barg)", key="a7_pmin", format="%.6f")
+            pmax = b.number_input("Operating pressure maximum (barg)", key="a7_pmax", format="%.6f")
+            a,b = st.columns(2)
+            tf = a.number_input("Average flowing temperature (°C)", key="a7_tf", format="%.6f")
+            tb = b.number_input("Base temperature (°C)", key="a7_tb", format="%.6f")
+            a,b,c = st.columns(3)
+            pb = a.number_input("Base pressure Pb (bar abs)", min_value=0.000001, key="a7_pb", format="%.6f")
+            patm = b.number_input("Atmospheric pressure Pa (bar abs)", min_value=0.000001, key="a7_patm", format="%.6f")
+            zratio = c.number_input("Zf / Zb", min_value=0.000001, key="a7_zratio", format="%.8f")
+
+            if st.button("Use latest AGA 8 Zf/Zb", key="a7_use_a8", use_container_width=True):
+                r8 = st.session_state.get("aga8_last")
+                if r8:
+                    st.session_state["a7_zratio"] = r8["flowing"]["Z"] / r8["base"]["Z"]
+                    st.success("Zf/Zb transferred from the latest AGA 8 calculation.")
+                    st.rerun()
+                else:
+                    st.warning("No AGA 8 result is available yet.")
+
+            basis = st.radio(
+                "Flow-range pairing",
+                ["Project paired conditions", "Conservative envelope"],
+                horizontal=True,
+                help="Project paired: Qmin@Pmin and Qmax@Pmax. Conservative envelope: Qmin@Pmax and Qmax@Pmin.",
+            )
+            legacy = st.checkbox("Legacy Excel match: use 273.0 instead of 273.15 for °C → K", value=False)
+            continuous_pct = st.slider("Continuous-use target (% of screening Qmax)", min_value=50, max_value=100, value=int(st.session_state["a7_cont"]), step=5)
+
+        with right:
+            try:
+                rr = aga7_engine.calculate_flow_range(
+                    qmin, qmax, pmin, pmax,
+                    base_pressure_bar_abs=pb,
+                    flowing_temp_c=tf, base_temp_c=tb,
+                    zf_over_zb=zratio, atmospheric_bar_abs=patm,
+                    pairing="conservative" if basis == "Conservative envelope" else "paired",
+                    legacy_excel_temperature_offset=legacy,
+                )
+                rec = aga7_engine.recommend_g_rating(rr["Actual_Max_m3_h"], continuous_pct/100.0)
+                flange = aga7_engine.workbook_flange_screening(pmax)
+                m1,m2,m3 = st.columns(3)
+                m1.metric("Actual line flow min", f"{rr['Actual_Min_m3_h']:.3f} m³/h")
+                m2.metric("Actual line flow max", f"{rr['Actual_Max_m3_h']:.3f} m³/h")
+                m3.metric("Actual rangeability", f"{rr['Actual_Rangeability']:.2f}:1")
+                st.markdown("##### Turbine meter screening")
+                a,b,c = st.columns(3)
+                a.metric("Minimum by nominal Qmax", str(rec["Minimum_By_Qmax"]))
+                b.metric("Recommended continuous", str(rec["Recommended_Continuous"]))
+                util = rec["Recommended_Utilization_pct"]
+                c.metric("Recommended utilization", "—" if util is None else f"{util:.1f}%")
+                st.caption(rr["Pairing_Basis"])
+                st.warning("AGA 7 does **not** prescribe the G-rating table used here. Final selection must be checked against the selected manufacturer's operating flow range at the actual pressure, density, calibration basis, pressure loss and service conditions.")
+                with st.expander("Project workbook flange screening (not final ASME rating)"):
+                    st.write(f"**{flange}**")
+                    st.caption("This reproduces the workbook's simple pressure threshold screening only. Verify material, temperature, flange standard and vendor MAOP separately.")
+
+                table = pd.DataFrame(aga7_engine.g_rating_table(continuous_pct/100.0))
+                st.dataframe(table, hide_index=True, use_container_width=True)
+            except Exception as e:
+                st.error(str(e))
+
+        if legacy:
+            st.caption("Legacy Excel regression: with Qmin=515 Sm³/h @ 1 barg and Qmax=1283 Sm³/h @ 4 barg, T=32°C, Tb=15.555556°C, Pb=1.01325 bar abs and Zf/Zb=1, the project paired results are approximately 273.966 and 274.091 m³/h.")
+
+    with mode2:
+        direction = st.segmented_control("Conversion direction", ["Base → Flowing", "Flowing → Base"], default="Base → Flowing", key="a7_direction")
+        a,b,c = st.columns(3)
+        if direction == "Base → Flowing":
+            qsingle = a.number_input("Base flow Qb (Sm³/h)", min_value=0.0, value=float(st.session_state["a7_qmax"]), key="a7_single_qb")
+        else:
+            qsingle = a.number_input("Flowing/line flow Qf (m³/h)", min_value=0.0, key="a7_qf_single")
+        pgsingle = b.number_input("Flowing pressure Pg (barg)", key="a7_pg_single")
+        legacy2 = c.checkbox("Legacy Excel 273.0 K offset", value=False, key="a7_legacy_single")
+        a,b,c,d,e = st.columns(5)
+        tf2 = a.number_input("Tf (°C)", key="a7_tf_single", value=float(st.session_state["a7_tf"]))
+        tb2 = b.number_input("Tb (°C)", key="a7_tb_single", value=float(st.session_state["a7_tb"]))
+        pb2 = c.number_input("Pb (bar abs)", min_value=0.000001, key="a7_pb_single", value=float(st.session_state["a7_pb"]))
+        pa2 = d.number_input("Pa (bar abs)", min_value=0.000001, key="a7_pa_single", value=float(st.session_state["a7_patm"]))
+        zr2 = e.number_input("Zf/Zb", min_value=0.000001, key="a7_zr_single", value=float(st.session_state["a7_zratio"]), format="%.8f")
+        try:
+            if direction == "Base → Flowing":
+                sr = aga7_engine.flowing_rate_from_base(qsingle, pgsingle, pb2, tf2, tb2, zr2, pa2, legacy2)
+                st.metric("Flowing / line flow Qf", f"{sr['Q_flowing_m3_h']:.6f} m³/h")
+            else:
+                sr = aga7_engine.base_rate_from_flowing(qsingle, pgsingle, pb2, tf2, tb2, zr2, pa2, legacy2)
+                st.metric("Base flow Qb", f"{sr['Q_base_sm3_h']:.6f} Sm³/h")
+            st.dataframe(pd.DataFrame([[k,v] for k,v in sr.items()], columns=["Parameter","Value"]), hide_index=True, use_container_width=True)
+        except Exception as e:
+            st.error(str(e))
+
+    with mode3:
+        st.markdown("##### AGA Report No. 7 basis")
+        st.markdown(r"""
+The module uses the Appendix B gas-law relationship between flowing and base conditions:
+
+**Qb = Qf × (Pf/Pb) × (Tb/Tf) × (Zb/Zf)**
+
+and its inverse:
+
+**Qf = Qb × (Pb/Pf) × (Tf/Tb) × (Zf/Zb)**
+
+where pressure and temperature are **absolute**. The operating gauge pressure is converted to absolute pressure using **Pf = Pg + Pa**.
+
+The project workbook workflow is retained as a selectable legacy mode, but its G-size recommendation logic is not copied as a standard rule because the workbook contains inconsistent/corrupted selection cells. Final turbine-meter range must be verified against manufacturer data.
+""")
+        st.markdown("##### Project Excel source")
+        st.code("Cari Meter Turbin(2).xlsx  |  password supplied by user during analysis  |  source not redistributed", language="text")
+        st.caption("The password is not stored in the application package.")
+
+
 elif page == "AGA 3 — Orifice Flow":
     page_header("AGA 3 — Orifice Flow", "Calculate base flow from a known bore, or solve the reference orifice diameter for a target base flow.")
     for k, v in {
@@ -498,7 +709,7 @@ elif page == "AGA 3 — Orifice Flow":
     mode = st.segmented_control("Calculation mode", ["Flow Rate", "Orifice Diameter"], default="Flow Rate", key="a3_mode")
     left, right = st.columns([1.1, .9])
     with left:
-        with st.form("aga3_form"):
+        with st.container(border=True):
             a, b, c = st.columns(3)
             T_f = a.number_input("Flowing temperature (°F)", key="a3_T_f", format="%.6f")
             P_f = b.number_input("Flowing pressure (psia)", key="a3_P_f", min_value=0.000001, format="%.6f")
@@ -516,12 +727,13 @@ elif page == "AGA 3 — Orifice Flow":
             rho_b = d.number_input("Base density (lbm/ft³)", key="a3_rho_b", min_value=0.000001, format="%.8f")
             downstream = st.checkbox("Pressure input is downstream tap", value=False)
             target = st.number_input("Target base flow (MMSCFD)", key="a3_target", min_value=0.000001, format="%.6f", disabled=mode != "Orifice Diameter")
-            submitted = st.form_submit_button("Calculate AGA 3", type="primary", use_container_width=True)
+            submitted = st.button("Calculate AGA 3", type="primary", use_container_width=True)
         if st.button("Use latest AGA 8 T/P + densities", use_container_width=True):
             r8 = st.session_state.get("aga8_last")
             if not r8:
                 st.warning("Calculate AGA 8 first.")
             else:
+                begin_new_result("aga3_last", "aga3_last_mode")
                 st.session_state["a3_T_f"] = st.session_state.get("a8_T", 65.0)
                 st.session_state["a3_P_f"] = st.session_state.get("a8_P", 750.5)
                 st.session_state["a3_rho_f"] = r8["flowing"]["density_lb_ft3"]
@@ -529,6 +741,7 @@ elif page == "AGA 3 — Orifice Flow":
                 st.rerun()
 
     if submitted:
+        begin_new_result("aga3_last", "aga3_last_mode")
         try:
             vals = {"T_f": T_f, "P_f": P_f, "dP": dP, "D_pipe": D_pipe, "alpha_orifice": alpha_o,
                     "alpha_pipe": alpha_p, "k": k, "mu": mu, "rho_f": rho_f, "rho_b": rho_b}
@@ -538,11 +751,12 @@ elif page == "AGA 3 — Orifice Flow":
                 r = solve_orifice_reference(vals, target / 0.000024, downstream)
                 st.session_state["a3_d_orifice"] = r["d_ref"]
             st.session_state["aga3_last"] = r
+            st.session_state["aga3_last_mode"] = mode
         except Exception as e:
             st.error(f"Calculation error: {e}")
 
     with right:
-        r = st.session_state.get("aga3_last")
+        r = st.session_state.get("aga3_last") if st.session_state.get("aga3_last_mode") == mode else None
         if r:
             st.metric("Base Flow", f"{r['mmscfd']:.6f} MMSCFD")
             m1, m2, m3 = st.columns(3)
@@ -571,19 +785,22 @@ elif page == "AGA 8 — Gas Properties":
 
     top1, top2 = st.columns([.85, 1.15])
     with top1:
-        with st.form("aga8_conditions"):
+        with st.container(border=True):
             a, b = st.columns(2)
             T = a.number_input("Flowing temperature (°F)", key="a8_T", format="%.4f")
             P = b.number_input("Flowing pressure (psia abs)", key="a8_P", min_value=0.000001, format="%.4f")
             Tb = a.number_input("Base temperature (°F)", key="a8_Tb", format="%.4f")
             Pb = b.number_input("Base pressure (psia abs)", key="a8_Pb", min_value=0.000001, format="%.4f")
-            calc8 = st.form_submit_button("Calculate AGA 8", type="primary", use_container_width=True)
+            calc8 = st.button("Calculate AGA 8", type="primary", use_container_width=True)
         c1, c2, c3 = st.columns(3)
         if c1.button("Gulf Coast", use_container_width=True):
+            begin_new_result("aga8_last")
             st.session_state["a8_comp"] = GULF_COAST.copy(); st.rerun()
         if c2.button("Amarillo", use_container_width=True):
+            begin_new_result("aga8_last")
             st.session_state["a8_comp"] = AMARILLO.copy(); st.rerun()
         if c3.button("Normalize", use_container_width=True):
+            begin_new_result("aga8_last")
             vals = st.session_state["a8_comp"]
             s = sum(vals)
             if s > 0: st.session_state["a8_comp"] = [x * 100.0/s for x in vals]
@@ -601,6 +818,7 @@ elif page == "AGA 8 — Gas Properties":
         st.caption(f"Composition total: **{total:.6f}%** · {sum(1 for x in st.session_state['a8_comp'] if x > 0)} active components. The DETAIL engine normalizes internally.")
 
     if calc8:
+        begin_new_result("aga8_last")
         try:
             r = aga8_detail.calculate_us(st.session_state["a8_comp"], T, P, Tb, Pb)
             st.session_state["aga8_last"] = r
@@ -625,12 +843,14 @@ elif page == "AGA 8 — Gas Properties":
         st.dataframe(detail, hide_index=True, use_container_width=True)
         c1, c2 = st.columns(2)
         if c1.button("Send T/P + densities to AGA 3", type="primary", use_container_width=True):
+            begin_new_result("aga3_last", "aga3_last_mode")
             st.session_state["a3_T_f"] = st.session_state["a8_T"]
             st.session_state["a3_P_f"] = st.session_state["a8_P"]
             st.session_state["a3_rho_f"] = f["density_lb_ft3"]
             st.session_state["a3_rho_b"] = b["density_lb_ft3"]
             st.success("Transferred. Open AGA 3 from the sidebar.")
         if c2.button("Send gas properties to Control Valve", use_container_width=True):
+            begin_new_result("cv_last", "cv_last_service")
             st.session_state["cv_gas_temp"] = (f["temperature_K"] - 273.15)
             st.session_state["cv_gas_mw"] = r["molar_mass_g_mol"]
             st.session_state["cv_gas_z"] = f["Z"]
@@ -657,22 +877,24 @@ elif page == "Control Valve Sizing":
     st.caption(f"Representative coefficients: FL={vd.fl}, Fd={vd.fd}, xT={vd.xt}. Final vendor sizing should use certified valve-specific data.")
 
     if service == "Liquid":
-        with st.form("cv_liquid"):
+        with st.container(border=True):
             a,b,c = st.columns(3)
             q=a.number_input("Flow (m³/h)", 0.0001, value=25.0); p1=b.number_input("P1 (bara)", 0.0001, value=8.0); p2=c.number_input("P2 (bara)", 0.0001, value=5.0)
             a,b,c = st.columns(3)
             rho=a.number_input("Density (kg/m³)", 0.001, value=998.0); pv=b.number_input("Vapor pressure (bara)", 0.0, value=0.03); pc=c.number_input("Critical pressure (bara)", 0.001, value=220.64)
             a,b,c = st.columns(3)
             mu=a.number_input("Viscosity (Pa·s)", 0.0000001, value=0.00089, format="%.7f"); d1=b.number_input("Inlet pipe ID (mm, 0=auto)", 0.0, value=0.0); d2=c.number_input("Outlet pipe ID (mm, 0=auto)",0.0,value=0.0)
-            submit=st.form_submit_button("Calculate Control Valve", type="primary", use_container_width=True)
+            submit=st.button("Calculate Control Valve", type="primary", use_container_width=True)
         if submit:
+            begin_new_result("cv_last", "cv_last_service")
             try:
                 data=LiquidSizingInput(q,p1,p2,rho,pv,pc,mu,fl=vd.fl or .85,fd=vd.fd or 1.0,pipe_inlet_diameter_mm=d1 or None,pipe_outlet_diameter_mm=d2 or None)
                 st.session_state["cv_last"]=size_liquid_valve(data,valve_series=list(vd.sizes),valve_meta={"vendor":vd.vendor,"style":vd.style})
+                st.session_state["cv_last_service"] = service
             except Exception as e: st.error(str(e))
     elif service == "Gas":
         _default("cv_gas_temp",20.0); _default("cv_gas_mw",18.0); _default("cv_gas_z",0.98)
-        with st.form("cv_gas"):
+        with st.container(border=True):
             a,b,c = st.columns(3)
             q=a.number_input("Normal flow (Nm³/h)",0.0001,value=800.0); p1=b.number_input("P1 (bara)",0.0001,value=8.0); p2=c.number_input("P2 (bara)",0.0001,value=6.0)
             a,b,c = st.columns(3)
@@ -680,27 +902,31 @@ elif page == "Control Valve Sizing":
             a,b,c = st.columns(3)
             kr=a.number_input("k = Cp/Cv",0.1,value=1.28); mu=b.number_input("Viscosity (Pa·s)",0.00000001,value=1.1e-5,format="%.8f"); d1=c.number_input("Inlet pipe ID (mm, 0=auto)",0.0,value=0.0)
             d2=st.number_input("Outlet pipe ID (mm, 0=auto)",0.0,value=0.0)
-            submit=st.form_submit_button("Calculate Control Valve", type="primary", use_container_width=True)
+            submit=st.button("Calculate Control Valve", type="primary", use_container_width=True)
         if submit:
+            begin_new_result("cv_last", "cv_last_service")
             try:
                 data=GasSizingInput(q,p1,p2,temp,mw,kr,mu,z=z,fl=vd.fl or .85,fd=vd.fd or 1.0,xt=vd.xt or .69,pipe_inlet_diameter_mm=d1 or None,pipe_outlet_diameter_mm=d2 or None)
                 st.session_state["cv_last"]=size_gas_valve(data,valve_series=list(vd.sizes),valve_meta={"vendor":vd.vendor,"style":vd.style})
+                st.session_state["cv_last_service"] = service
             except Exception as e: st.error(str(e))
     else:
-        with st.form("cv_steam"):
+        with st.container(border=True):
             a,b,c=st.columns(3)
             q=a.number_input("Steam flow (kg/h)",0.0001,value=2500.0); p1=b.number_input("P1 (bara)",0.0001,value=12.0); p2=c.number_input("P2 (bara)",0.0001,value=8.0)
             a,b,c=st.columns(3)
             temp=a.number_input("Temperature (°C)",value=220.0); kr=b.number_input("k = Cp/Cv",0.1,value=1.30); z=c.number_input("Z-factor",0.001,value=1.0)
             a,b=st.columns(2); d1=a.number_input("Inlet pipe ID (mm, 0=auto)",0.0,value=0.0); d2=b.number_input("Outlet pipe ID (mm, 0=auto)",0.0,value=0.0)
-            submit=st.form_submit_button("Calculate Control Valve", type="primary", use_container_width=True)
+            submit=st.button("Calculate Control Valve", type="primary", use_container_width=True)
         if submit:
+            begin_new_result("cv_last", "cv_last_service")
             try:
                 data=SteamSizingInput(q,p1,p2,temp,specific_heat_ratio=kr,z=z,fl=vd.fl or .85,fd=vd.fd or 1.0,xt=vd.xt or .69,pipe_inlet_diameter_mm=d1 or None,pipe_outlet_diameter_mm=d2 or None)
                 st.session_state["cv_last"]=size_steam_valve(data,valve_series=list(vd.sizes),valve_meta={"vendor":vd.vendor,"style":vd.style})
+                st.session_state["cv_last_service"] = service
             except Exception as e: st.error(str(e))
 
-    r=st.session_state.get("cv_last")
+    r=st.session_state.get("cv_last") if st.session_state.get("cv_last_service") == service else None
     if r:
         m1,m2,m3,m4=st.columns(4)
         m1.metric("Required Cv",_fmt(r.required_cv,4)); m2.metric("Required Kv",_fmt(r.required_kv,4)); m3.metric("Selected Valve",f"DN {r.valve_dn_mm} ({r.valve_inch})"); m4.metric("Rated Cv",_fmt(r.rated_cv,3))
@@ -741,7 +967,7 @@ elif page == "Electrical Sizing":
             cores = st.selectbox("Cable cores", [1,2,3,4], index=[1,2,3,4].index(default_core), key="elec_cores")
         installation = st.selectbox("Installation method", inst_options, key="elec_install")
 
-        with st.form("electrical_cable_form"):
+        with st.container(border=True):
             a,b,c,d = st.columns(4)
             load_kw = a.number_input("Load rating (kW)", min_value=0.001, value=37.0 if load_type == "Motor" else 360.0, format="%.3f")
             pf = b.number_input("Power factor", min_value=0.01, max_value=1.0, value=0.89 if load_type == "Motor" else (1.0 if system == "DC" else 0.80), format="%.3f", disabled=(system == "DC"))
@@ -783,9 +1009,10 @@ elif page == "Electrical Sizing":
                     manual_size = a.selectbox("Selected conductor size (mm²)", sizes, index=min(len(sizes)-1, max(0, len(sizes)//2)))
                     manual_n = b.number_input("Parallel cable runs", min_value=1, max_value=12, value=1, step=1)
 
-            calc_electrical = st.form_submit_button("Calculate Electrical", type="primary", use_container_width=True)
+            calc_electrical = st.button("Calculate Electrical", type="primary", use_container_width=True)
 
         if calc_electrical:
+            begin_new_result("electrical_last", "electrical_candidates", "electrical_cb_i2t", "electrical_last_mode")
             try:
                 common = dict(
                     voltage=voltage, load_kw=load_kw, pf=pf, efficiency=eff, length_m=length_m,
@@ -803,11 +1030,12 @@ elif page == "Electrical Sizing":
                     st.session_state["electrical_candidates"] = [r]
                     st.session_state["electrical_last"] = r.to_dict()
                 st.session_state["electrical_cb_i2t"] = cb_i2t
+                st.session_state["electrical_last_mode"] = mode
             except Exception as e:
                 st.error(f"Electrical calculation error: {e}")
 
-        last = st.session_state.get("electrical_last")
-        candidates = st.session_state.get("electrical_candidates", [])
+        last = st.session_state.get("electrical_last") if st.session_state.get("electrical_last_mode") == mode else None
+        candidates = st.session_state.get("electrical_candidates", []) if st.session_state.get("electrical_last_mode") == mode else []
         if last:
             st.markdown("#### Calculation Result")
             a,b,c,d = st.columns(4)
@@ -865,7 +1093,7 @@ elif page == "Electrical Sizing":
 
     with etab2:
         st.markdown("#### Main Ground Conductor Sizing — IEEE 80")
-        with st.form("ground_conductor_form"):
+        with st.container(border=True):
             a,b,c,d = st.columns(4)
             ig = a.number_input("Symmetrical earth fault current (kA)", min_value=0.001, value=27.5)
             tm = b.number_input("Material fusing temperature Tm (°C)", value=1084.0)
@@ -876,8 +1104,9 @@ elif page == "Electrical Sizing":
             rho_r = b.number_input("ρr (µΩ·cm)", min_value=0.0001, value=1.78)
             k0 = c.number_input("K0 (°C)", value=242.0)
             tcap = d.number_input("TCAP (J/cm³·°C)", min_value=0.001, value=3.42)
-            gc_calc = st.form_submit_button("Calculate Ground Conductor", type="primary", use_container_width=True)
+            gc_calc = st.button("Calculate Ground Conductor", type="primary", use_container_width=True)
         if gc_calc:
+            begin_new_result("ground_conductor_last")
             try:
                 req = electrical.ground_conductor_area_ieee80(ig, tm, ta, alpha, rho_r, k0, tc, tcap)
                 selected = electrical.nearest_standard_size(req)
@@ -892,7 +1121,7 @@ elif page == "Electrical Sizing":
 
     with etab3:
         st.markdown("#### Maximum Allowable Step & Touch Voltage")
-        with st.form("step_touch_form"):
+        with st.container(border=True):
             a,b,c = st.columns(3)
             rho = a.number_input("Soil resistivity ρ (Ω·m)", min_value=0.001, value=48.0)
             rhos = b.number_input("Surface layer resistivity ρs (Ω·m)", min_value=0.001, value=1000.0)
@@ -900,8 +1129,9 @@ elif page == "Electrical Sizing":
             a,b = st.columns(2)
             ts = a.number_input("Fault clearing time ts (s)", min_value=0.001, value=0.8)
             rb = b.number_input("Human body resistance RB (Ω)", min_value=1.0, value=1000.0)
-            st_calc = st.form_submit_button("Calculate Step & Touch", type="primary", use_container_width=True)
+            st_calc = st.button("Calculate Step & Touch", type="primary", use_container_width=True)
         if st_calc:
+            begin_new_result("step_touch_last")
             try: st.session_state["step_touch_last"] = electrical.allowable_step_touch(rho,rhos,hs,ts,rb)
             except Exception as e: st.error(str(e))
         sr = st.session_state.get("step_touch_last")
@@ -922,7 +1152,7 @@ elif page == "Electrical Sizing":
 
     with etab4:
         st.markdown("#### Ground Grid + Earth Rod Resistance")
-        with st.form("grid_resistance_form"):
+        with st.container(border=True):
             a,b,c,d = st.columns(4)
             rho_g = a.number_input("Grid-layer soil ρ (Ω·m)", min_value=0.001, value=6.71)
             rho_rod = b.number_input("Rod-layer soil ρ (Ω·m)", min_value=0.001, value=144.47)
@@ -938,8 +1168,9 @@ elif page == "Electrical Sizing":
             dr = b.number_input("Rod diameter (m)", min_value=0.000001, value=0.019, format="%.4f")
             k1 = c.number_input("K1", value=1.374705882352941, format="%.9f")
             k2 = d.number_input("K2", value=5.632352941176471, format="%.9f")
-            grid_calc = st.form_submit_button("Calculate Grid Resistance", type="primary", use_container_width=True)
+            grid_calc = st.button("Calculate Grid Resistance", type="primary", use_container_width=True)
         if grid_calc:
+            begin_new_result("grid_resistance_last")
             try:
                 st.session_state["grid_resistance_last"] = electrical.grid_resistance_rectangular(
                     rho_g,rho_rod,x,y,lc,h,dc,lr,dr,int(nr),k1,k2
@@ -959,7 +1190,7 @@ elif page == "Electrical Sizing":
     with etab5:
         st.markdown("#### Lightning Protection Earthing — App-1C LPS")
         st.caption("This calculator reproduces the Lightning Protection Earthing Resistance worksheet in Lampiran 2. It is an earthing-resistance calculation, not a lightning-risk or protection-radius/rolling-sphere study.")
-        with st.form("lightning_lps_form"):
+        with st.container(border=True):
             a,b,c,d = st.columns(4)
             rho_lps_grid = a.number_input("Grid-layer soil ρ (Ω·m)", min_value=0.001, value=24.29, key="lps_rho_grid")
             rho_lps_rod = b.number_input("Rod-layer soil ρ (Ω·m)", min_value=0.001, value=24.40, key="lps_rho_rod")
@@ -975,8 +1206,9 @@ elif page == "Electrical Sizing":
             k1_lps = b.number_input("K1", value=1.37, format="%.6f", key="lps_k1")
             k2_lps = c.number_input("K2", value=5.65, format="%.6f", key="lps_k2")
             req_lps = d.number_input("Maximum allowable Rg (Ω)", min_value=0.001, value=10.0, key="lps_req")
-            lps_calc = st.form_submit_button("Calculate Lightning Earthing", type="primary", use_container_width=True)
+            lps_calc = st.button("Calculate Lightning Earthing", type="primary", use_container_width=True)
         if lps_calc:
+            begin_new_result("lightning_lps_last")
             try:
                 st.session_state["lightning_lps_last"] = electrical.lightning_lps_earthing(
                     rho_lps_grid, rho_lps_rod, spacing, lc_lps, h_lps, dc_lps,
@@ -1015,13 +1247,14 @@ elif page == "Electrical Sizing":
     with etab6:
         st.markdown("#### Conventional Lightning Protection — NFPA 780 (2000) Rolling Sphere")
         st.caption("Traditional LPS screening only. The uploaded NFPA 780 edition uses a 150 ft (46 m) rolling sphere and explicitly excludes Early Streamer Emission (ESE) systems from its scope.")
-        with st.form("nfpa780_rolling_sphere_form"):
+        with st.container(border=True):
             a,b,c = st.columns(3)
             h1 = a.number_input("Higher roof / strike-termination height h1 (m)", min_value=0.01, value=15.0, step=0.5, key="nfpa_h1")
             h2 = b.number_input("Lower protected plane height h2 (m)", min_value=0.0, value=0.0, step=0.5, key="nfpa_h2")
             req_d = c.number_input("Required horizontal protected distance (m, 0 = none)", min_value=0.0, value=20.0, step=0.5, key="nfpa_req_d")
-            nfpa_calc = st.form_submit_button("Calculate NFPA 780 Rolling Sphere", type="primary", use_container_width=True)
+            nfpa_calc = st.button("Calculate NFPA 780 Rolling Sphere", type="primary", use_container_width=True)
         if nfpa_calc:
+            begin_new_result("nfpa780_last")
             try:
                 if hasattr(electrical, "nfpa780_rolling_sphere_2000"):
                     nr = electrical.nfpa780_rolling_sphere_2000(h1, h2)
@@ -1095,9 +1328,109 @@ elif page == "Electrical Sizing":
 """)
 
     with etab7:
-        st.markdown("#### ESE Protection Radius — NF C 17-102:2011")
-        st.caption("Early Streamer Emission (ESEAT) screening based on the uploaded NF C 17-102 standard. This is intentionally separate from NFPA 780: the uploaded NFPA 780 (2000) edition explicitly excludes ESE systems. Use the certified ΔT value from the selected ESEAT test report.")
-        with st.form("ese_nfc17102_form"):
+        st.markdown("#### Early Streamer Emission (ESE) — Project Excel Aligned")
+        st.caption("The project mode follows the uploaded workbook sheet **PENGANGKAL PETIR**. Both ESE calculators below now recalculate live whenever an input changes, so an old result cannot remain on screen after you edit the inputs.")
+
+        project_tab, standard_tab = st.tabs(["Project Excel Method", "NF C 17-102 Standard Mode"])
+
+        with project_tab:
+            st.markdown("##### 1 · Lightning risk / protection level")
+            st.caption("Live mode — change any value and the results below update immediately.")
+
+            a,b,c,d = st.columns(4)
+            x_a = a.number_input("Panjang area, a (m)", min_value=0.01, value=120.0, step=1.0, key="xls_ese_a")
+            x_b = b.number_input("Lebar area, b (m)", min_value=0.01, value=110.0, step=1.0, key="xls_ese_b")
+            x_H = c.number_input("Tinggi penangkal petir (m)", min_value=0.01, value=25.0, step=0.5, key="xls_ese_H")
+            x_Td = d.number_input("Tingkat Hari Guruh, Td", min_value=0.01, value=127.0, step=1.0, key="xls_ese_Td")
+
+            a,b,c,d,e = st.columns(5)
+            x_c1 = a.number_input("C1 · lingkungan", min_value=0.01, value=0.5, step=0.1, key="xls_ese_c1")
+            x_c2 = b.number_input("C2", min_value=0.01, value=2.0, step=0.5, key="xls_ese_c2")
+            x_c3 = c.number_input("C3", min_value=0.01, value=4.0, step=0.5, key="xls_ese_c3")
+            x_c4 = d.number_input("C4", min_value=0.01, value=1.0, step=0.5, key="xls_ese_c4")
+            x_c5 = e.number_input("C5", min_value=0.01, value=5.0, step=0.5, key="xls_ese_c5")
+
+            st.markdown("##### 2 · ESE protection radius")
+            a,b,c,d = st.columns(4)
+            x_hb = a.number_input("Tinggi bangunan tertinggi (m)", min_value=0.0, value=12.5, step=0.5, key="xls_ese_hb")
+            x_v = b.number_input("Kecepatan tracer, V (m/s)", min_value=1.0, value=1000000.0, step=10000.0, format="%.0f", key="xls_ese_v")
+            x_dt_us = c.number_input("Tambahan waktu spark ΔT (µs)", min_value=0.0, value=67.0, step=1.0, key="xls_ese_dt")
+            x_off = d.number_input("Allowance selisih tinggi (m)", value=0.5, step=0.1, key="xls_ese_off")
+
+            try:
+                xr = electrical.ese_project_excel_method(
+                    area_length_m=x_a, area_width_m=x_b,
+                    lightning_rod_height_m=x_H, thunder_days_td=x_Td,
+                    c1_environment=x_c1, c2_building=x_c2, c3_building=x_c3,
+                    c4_building=x_c4, c5_building=x_c5,
+                    highest_building_height_m=x_hb,
+                    tracer_speed_m_s=x_v, delta_t_s=x_dt_us*1e-6,
+                    height_offset_m=x_off,
+                )
+            except Exception as e:
+                xr = None
+                st.error(str(e))
+
+            if xr:
+                m1,m2,m3,m4 = st.columns(4)
+                m1.metric("Protection Level", xr["Protection_Level"])
+                m2.metric("Efficiency", f"{xr['Efficiency']*100:.4f}%")
+                m3.metric("Radius Proteksi Rp", f"{xr['Rp_m']:.2f} m")
+                m4.metric("ΔL", f"{xr['DeltaL_m']:.2f} m")
+
+                st.dataframe(pd.DataFrame([
+                    ["Panjang area, a", xr["Area_Length_a_m"], "m"],
+                    ["Lebar area, b", xr["Area_Width_b_m"], "m"],
+                    ["Tinggi penangkal petir", xr["Lightning_Rod_Height_m"], "m"],
+                    ["Tingkat Hari Guruh, Td", xr["Thunder_Days_Td"], "—"],
+                    ["C1 · lingkungan", xr["C1_Environment"], "—"],
+                    ["C2", xr["C2"], "—"],
+                    ["C3", xr["C3"], "—"],
+                    ["C4", xr["C4"], "—"],
+                    ["C5", xr["C5"], "—"],
+                    ["Total koefisien C2×C3×C4×C5", xr["Total_Coefficient_C2xC3xC4xC5"], "—"],
+                    ["Intensitas sambaran menuju tanah, Ng", xr["Ng_per_km2_year"], "km²/year"],
+                    ["Luas area yang diproteksi, Ae", xr["Protected_Area_Ae_m2"], "m²"],
+                    ["Level proteksi petir, Nd", xr["Nd_strikes_per_year"], "lightning strikes/year"],
+                    ["Kebutuhan penangkal petir, Nc", xr["Nc"], "—"],
+                    ["Efisiensi penangkal petir", xr["Efficiency"], "—"],
+                    ["Tingkat proteksi", xr["Protection_Level"], "Level"],
+                    ["Tinggi bangunan tertinggi", xr["Highest_Building_Height_m"], "m"],
+                    ["Allowance selisih tinggi", xr["Height_Offset_m"], "m"],
+                    ["Selisih tinggi, h", xr["Height_Difference_h_m"], "m"],
+                    ["Level area, D", xr["Level_Area_D_m"], "m"],
+                    ["Kecepatan tracer, V", xr["Tracer_Speed_m_s"], "m/s"],
+                    ["Tambahan waktu spark, ΔT", xr["DeltaT_s"], "s"],
+                    ["Tambahan jarak, ΔL", xr["DeltaL_m"], "m"],
+                    ["Radius proteksi, Rp", xr["Rp_m"], "m"],
+                ], columns=["Parameter","Value","Unit"]), hide_index=True, use_container_width=True)
+
+                if xr.get("Workbook_Display_Match"):
+                    st.success("Default workbook case: Ng ≈ 17.90, Ae = 65,362.50 m², Nd ≈ 0.585, Level I, ΔL = 67 m, Rp ≈ 86.72 m.")
+                else:
+                    st.info("Calculated from the CURRENT input values shown above.")
+
+            with st.expander("Project Excel calculation basis"):
+                st.markdown(r"""
+- **Total coefficient** = C2 × C3 × C4 × C5
+- **Ng** = 0.04 × Td^1.26
+- **Ae** = a×b + 6H(a+b) + 9×3.14×H²
+- **Nd** = Ng × Ae × C1 × 10⁻⁶
+- **Nc** = 1.5×10⁻³ / Total coefficient
+- **Efficiency** = 1 − Nc/Nd
+- Protection-level mapping used by the program: **I ≥ 0.98**, **II ≥ 0.95**, **III ≥ 0.90**, otherwise **IV**.
+- **h** = lightning-rod height − highest-building height + allowance.
+- **D** = 20 / 30 / 45 / 60 m for Levels I / II / III / IV.
+- **ΔL** = V × ΔT.
+- **Rp** = √[h(2D−h) + ΔL(2D+ΔL)].
+
+The uploaded workbook's default case uses **ΔT = 67 µs**. This project-workbook reproduction remains separate from the NF C 17-102 standard-mode calculator.
+""")
+
+        with standard_tab:
+            st.markdown("##### NF C 17-102:2011 standard-mode screening")
+            st.caption("Live mode — use the certified ΔT value from the selected ESEAT test report. This calculation is separate from the project Excel reproduction.")
+
             a,b,c,d = st.columns(4)
             ese_level = a.selectbox("Protection level", ["I", "II", "III", "IV"], index=0, key="ese_level")
             ese_dt = b.number_input("ESE efficiency ΔT (µs)", min_value=0.0, max_value=60.0, value=60.0, step=1.0, key="ese_dt")
@@ -1109,13 +1442,10 @@ elif page == "Electrical Sizing":
             ese_count = b.number_input("Number of ESEATs", min_value=1, value=1, step=1, key="ese_count")
             building_h = c.number_input("Building height (m, optional)", min_value=0.0, value=20.0, step=1.0, key="ese_building_h")
             tip_elev = d.number_input("ESE tip elevation above ground (m, optional)", min_value=0.0, value=25.0, step=1.0, key="ese_tip_elev")
-
             level_ipp = st.checkbox("Apply special Level I++ radius reduction (40% reduction from Level-I radius)", value=False, key="ese_ipp")
-            ese_calc = st.form_submit_button("Calculate ESE Protection Radius", type="primary", use_container_width=True)
 
-        if ese_calc:
             try:
-                st.session_state["ese_last"] = electrical.ese_protection_radius_nfc17102(
+                er = electrical.ese_protection_radius_nfc17102(
                     protection_level=ese_level,
                     ese_efficiency_us=ese_dt,
                     height_over_protected_plane_m=ese_h,
@@ -1127,49 +1457,23 @@ elif page == "Electrical Sizing":
                     apply_level_i_plus_plus=level_ipp,
                 )
             except Exception as e:
+                er = None
                 st.error(str(e))
 
-        er = st.session_state.get("ese_last")
-        if er:
-            a,b,c,d = st.columns(4)
-            a.metric("Protection Radius Rp", f"{er['Rp_m']:.2f} m")
-            b.metric("Reference Radius r", f"{er['r_m']:.0f} m")
-            c.metric("Δ", f"{er['Delta_m']:.1f} m")
-            d.metric("Circular Coverage Area", f"{er['Protected_Circular_Area_m2']:.0f} m²")
-
-            if er["Coverage_OK"] is not None:
-                if er["Coverage_OK"]:
-                    st.success(f"Required radius {er['Required_Radius_m']:.2f} m is covered. Margin = {er['Coverage_Margin_m']:.2f} m.")
-                else:
-                    st.error(f"Required radius {er['Required_Radius_m']:.2f} m is NOT covered. Shortfall = {abs(er['Coverage_Margin_m']):.2f} m.")
-
-            if er["High_Rise_Additional_Protection_Required"]:
-                st.warning("High-rise rule triggered: additional direct-strike protection is required for the highest 20% of structures above 60 m or for points above 120 m; NF C 17-102 also calls for a minimum of four down-conductors for this case.")
-
-            st.info(er["Downconductor_Guidance"])
-            if er["Special_Note"]:
-                st.warning(er["Special_Note"])
-
-            st.dataframe(pd.DataFrame([
-                ["Protection level", er["Protection_Level"], "—"],
-                ["ESEAT efficiency ΔT", er["DeltaT_us"], "µs"],
-                ["Height h", er["Height_h_m"], "m"],
-                ["Rp(5)", er["Rp5_m"], "m"],
-                ["Calculated Rp before I++ adjustment", er["Rp_raw_m"], "m"],
-                ["Minimum specific down-conductors", er["Minimum_Specific_Downconductors"], "—"],
-                ["Equation used", er["Equation"], "—"],
-            ], columns=["Parameter","Value","Unit"]), hide_index=True, use_container_width=True)
-
-        with st.expander("NF C 17-102 calculation basis and limits"):
-            st.markdown("""
-- For **h ≥ 5 m**: **Rp(h) = √[2rh − h² + Δ(2r + Δ)]**.
-- For **2 m ≤ h ≤ 5 m**: **Rp = h × Rp(5) / 5**.
-- Reference radius **r**: Level I = 20 m, Level II = 30 m, Level III = 45 m, Level IV = 60 m.
-- The standard limits ESEAT efficiency **ΔT to 60 µs maximum**. When ΔT is entered in microseconds, the numerical value of **Δ in metres** is the same because Δ = ΔT[s] × 10⁶.
-- The ESEAT tip is required to be at least **2 m above the area it protects**.
-- A risk analysis is required to establish the minimum required lightning protection level.
-- This calculator is a design-screening aid; ESEAT product certification, placement, separation distance, down-conductor routing, bonding, earthing, SPD coordination, inspection and maintenance still need project-specific verification.
-""")
+            if er:
+                a,b,c,d = st.columns(4)
+                a.metric("Protection Radius Rp", f"{er['Rp_m']:.2f} m")
+                b.metric("Reference Radius r", f"{er['r_m']:.0f} m")
+                c.metric("Δ", f"{er['Delta_m']:.1f} m")
+                d.metric("Circular Coverage Area", f"{er['Protected_Circular_Area_m2']:.0f} m²")
+                if er["Coverage_OK"] is not None:
+                    if er["Coverage_OK"]:
+                        st.success(f"Required radius {er['Required_Radius_m']:.2f} m is covered. Margin = {er['Coverage_Margin_m']:.2f} m.")
+                    else:
+                        st.error(f"Required radius {er['Required_Radius_m']:.2f} m is NOT covered. Shortfall = {abs(er['Coverage_Margin_m']):.2f} m.")
+                if er["High_Rise_Additional_Protection_Required"]:
+                    st.warning("High-rise rule triggered; perform the additional project-specific protection checks required by the standard.")
+                st.info(er["Downconductor_Guidance"])
 
 
 elif page == "PSV Engineering":
@@ -1180,53 +1484,57 @@ elif page == "PSV Engineering":
     case_name = ""
 
     if service == "Gas / Vapor":
-        with st.form("psv_gas"):
+        with st.container(border=True):
             case_name=st.text_input("Scenario name",value="Blocked Outlet — Gas")
             a,b,c=st.columns(3); W=a.number_input("Required relief rate (kg/h)",0.001,value=15000.0); setb=b.number_input("Set pressure (barg)",0.001,value=25.0); bp=c.number_input("Back pressure (barg)",0.0,value=1.5)
             a,b,c=st.columns(3); op=a.number_input("Overpressure (%)",0.0,value=10.0); temp=b.number_input("Relieving temperature (°C)",value=45.0); z=c.number_input("Z",0.001,value=.92)
             a,b,c=st.columns(3); mw=a.number_input("MW",0.001,value=16.04); k=b.number_input("k",0.1,value=1.31); n=c.number_input("Parallel valves",1,20,value=1,step=1)
             vtype=st.selectbox("Valve type",["conventional","balanced_bellows","pilot"], key="psv_gas_vtype")
             a,b,c=st.columns(3); kd=a.number_input("Kd",0.001,1.0,value=.975); kb=b.number_input("Kb (balanced bellows / manufacturer; ignored for conventional & pilot direct method)",0.001,1.0,value=1.0); kc=c.number_input("Kc",0.001,1.2,value=1.0)
-            calc=st.form_submit_button("Calculate PSV",type="primary",use_container_width=True)
+            calc=st.button("Calculate PSV",type="primary",use_container_width=True)
         if calc:
+            begin_new_result("psv_last")
             try:
                 p1=barg_to_psia(setb*(1+op/100)); p2=barg_to_psia(bp)
                 psv_result=calculate_gas_relief_area(kg_h_to_lb_h(W),p1,p2,c_to_rankine(temp),z,mw,k,kd,kb,kc,int(n),valve_type=vtype)
             except Exception as e: st.error(str(e))
     elif service == "Steam":
-        with st.form("psv_steam"):
+        with st.container(border=True):
             case_name=st.text_input("Scenario name",value="Steam Relief")
             a,b,c=st.columns(3); W=a.number_input("Steam rate (kg/h)",0.001,value=15000.0); setb=b.number_input("Set pressure (barg)",0.001,value=25.0); bp=c.number_input("Back pressure (barg)",0.0,value=1.5)
             a,b,c=st.columns(3); op=a.number_input("Overpressure (%)",0.0,value=10.0); temp=b.number_input("Temperature (°C)",value=300.0); n=c.number_input("Parallel valves",1,20,value=1,step=1)
             a,b,c=st.columns(3); kd=a.number_input("Kd",0.001,1.0,value=.975); kb=b.number_input("Kb",0.001,1.2,value=1.0); kc=c.number_input("Kc",0.001,1.2,value=1.0)
-            calc=st.form_submit_button("Calculate PSV",type="primary",use_container_width=True)
+            calc=st.button("Calculate PSV",type="primary",use_container_width=True)
         if calc:
+            begin_new_result("psv_last")
             try:
                 p1=barg_to_psia(setb*(1+op/100)); p2=barg_to_psia(bp)
                 psv_result=calculate_napier_steam_area(kg_h_to_lb_h(W),p1,p2,c_to_rankine(temp),kd,kb,kc,int(n))
             except Exception as e: st.error(str(e))
     elif service == "Liquid":
-        with st.form("psv_liquid"):
+        with st.container(border=True):
             case_name=st.text_input("Scenario name",value="Blocked Outlet — Liquid")
             a,b,c=st.columns(3); q=a.number_input("Relief flow (m³/h)",0.0001,value=100.0); setb=b.number_input("Set pressure (barg)",0.001,value=25.0); bp=c.number_input("Back pressure (barg)",0.0,value=1.5)
             a,b,c=st.columns(3); op=a.number_input("Overpressure (%)",0.0,value=10.0); sg=b.number_input("Specific gravity",0.001,value=.8); visc_unit=c.selectbox("Viscosity unit",["cP","SSU"], key="psv_liq_visc_unit")
             a,b,c=st.columns(3); mu=a.number_input(f"Viscosity ({visc_unit})",0.0001,value=1.0 if visc_unit=="cP" else 2000.0); kd=b.number_input("Kd",0.001,1.0,value=.65); kc=c.number_input("Kc",0.001,1.2,value=1.0)
             a,b=st.columns(2); n=a.number_input("Parallel valves",1,20,value=1,step=1); vtype=b.selectbox("Valve type",["conventional","balanced_bellows","pilot"], key="psv_liq_vtype")
-            calc=st.form_submit_button("Calculate PSV",type="primary",use_container_width=True)
+            calc=st.button("Calculate PSV",type="primary",use_container_width=True)
         if calc:
+            begin_new_result("psv_last")
             try:
                 # API 520 liquid Eq. 32/33 uses gauge pressure (psig), not absolute pressure.
                 p1=barg_to_psig(setb*(1+op/100)); p2=barg_to_psig(bp)
                 psv_result=calculate_liquid_relief_area(m3_h_to_gpm(q),p1,p2,sg,mu,kd=kd,kc=kc,num_valves=int(n),overpressure_pct=op,valve_type=vtype,set_pressure_psig=barg_to_psig(setb),viscosity_unit=visc_unit)
             except Exception as e: st.error(str(e))
     elif service == "Two-Phase":
-        with st.form("psv_tp"):
+        with st.container(border=True):
             case_name=st.text_input("Scenario name",value="Two-Phase Relief")
             a,b,c=st.columns(3); W=a.number_input("Relief rate (kg/h)",0.001,value=50000.0); setb=b.number_input("Relieving pressure (barg)",0.001,value=27.5); bp=c.number_input("Back pressure (barg)",0.0,value=1.5)
             a,b,c=st.columns(3); v0=a.number_input("v0 specific volume (m³/kg)",0.0000001,value=.01,format="%.7f"); v9=b.number_input("v9 specific volume (m³/kg)",0.0000001,value=.011,format="%.7f"); n=c.number_input("Parallel valves",1,20,value=1,step=1)
             a,b,c=st.columns(3); kd=a.number_input("Kd",0.001,1.0,value=.85); kb=b.number_input("Kb",0.001,1.2,value=1.0); kc=c.number_input("Kc",0.001,1.2,value=1.0)
-            calc=st.form_submit_button("Calculate PSV",type="primary",use_container_width=True)
+            calc=st.button("Calculate PSV",type="primary",use_container_width=True)
         if calc:
+            begin_new_result("psv_last")
             try:
                 omega=calculate_omega_flashing(m3_kg_to_ft3_lb(v0),m3_kg_to_ft3_lb(v9))
                 psv_result=calculate_two_phase_area(kg_h_to_lb_h(W),barg_to_psia(setb),barg_to_psia(bp),m3_kg_to_ft3_lb(v0),omega,kd,kb,kc,int(n)); psv_result["Omega"]=omega
@@ -1234,35 +1542,38 @@ elif page == "PSV Engineering":
     elif service == "External Fire — Wetted Vessel":
         env_choice=st.selectbox("API 521 Table 5 environment-factor preset", list(ENV_FACTORS.keys()) + ["Custom / project-specific"], key="fire_env_choice")
         preset_f = ENV_FACTORS.get(env_choice, 1.0)
-        with st.form("psv_fire"):
+        with st.container(border=True):
             case_name=st.text_input("Scenario name",value="External Fire")
             a,b,c=st.columns(3); area=a.number_input("Wetted area (ft²)",0.001,value=1000.0); F=b.number_input("Environmental factor F",0.0,1.0,value=float(preset_f)); hvap=c.number_input("Latent heat (BTU/lb)",0.001,value=150.0)
             drainage=st.checkbox("Adequate drainage / prompt firefighting",value=True)
-            calc=st.form_submit_button("Calculate Relief Load",type="primary",use_container_width=True)
+            calc=st.button("Calculate Relief Load",type="primary",use_container_width=True)
         st.caption("API 521 Table 5: water application facilities on a bare vessel and depressuring/emptying facilities are listed as F = 1.0 with footnote conditions; they are not automatically credited as F = 0.3 in this version.")
         if calc:
+            begin_new_result("psv_last")
             try:
                 w,qh=calculate_fire_wetted_load(area,F,hvap,drainage)
                 psv_result={"Relief_Load_lb_h":w,"Heat_Input_BTU_h":qh}
             except Exception as e: st.error(str(e))
     elif service == "Thermal Expansion":
-        with st.form("psv_thermal"):
+        with st.container(border=True):
             case_name=st.text_input("Scenario name",value="Blocked-in Thermal Expansion")
             a,b,c,d=st.columns(4); beta=a.number_input("Expansion coefficient (1/°F)",0.0000001,value=.0005,format="%.7f"); heat=b.number_input("Heat transfer (BTU/h)",0.001,value=170000.0); sg=c.number_input("Specific gravity",0.001,value=.8); cp=d.number_input("Specific heat (BTU/lb-°F)",0.001,value=.5)
-            calc=st.form_submit_button("Calculate Relief Load",type="primary",use_container_width=True)
+            calc=st.button("Calculate Relief Load",type="primary",use_container_width=True)
         if calc:
+            begin_new_result("psv_last")
             try:
                 q_gpm=calculate_thermal_expansion_load(beta,heat,sg,cp)
                 psv_result={"Relief_Flow_gpm":q_gpm,"Relief_Flow_m3_h":gpm_to_m3_h(q_gpm),"Method":"API 521 thermal expansion — volumetric relief flow"}
             except Exception as e: st.error(str(e))
     else:
-        with st.form("psv_pipe"):
+        with st.container(border=True):
             case_name="Piping Check"
             a,b,c=st.columns(3); q=a.number_input("Liquid flow (gpm)",0.0,value=100.0); rho=b.number_input("Density (lb/ft³)",0.001,value=50.0); mu=c.number_input("Viscosity (cP)",0.0001,value=1.0)
             a,b,c=st.columns(3); dia=a.number_input("Pipe ID (in)",0.001,value=3.0); length=b.number_input("Straight length (ft)",0.0,value=20.0); setpsig=c.number_input("PSV set pressure (psig)",0.001,value=100.0)
             a,b,c=st.columns(3); e90=a.number_input("90° elbows",0,20,value=2,step=1); e45=b.number_input("45° elbows",0,20,value=0,step=1); gates=c.number_input("Gate valves",0,20,value=1,step=1)
-            calc=st.form_submit_button("Calculate Piping Check",type="primary",use_container_width=True)
+            calc=st.button("Calculate Piping Check",type="primary",use_container_width=True)
         if calc:
+            begin_new_result("psv_last")
             try:
                 rr=calculate_inlet_pressure_drop(q,rho,mu,dia,length,int(e90),int(e45),int(gates)); passed,pct=check_inlet_rule(rr["delta_p_psi"],setpsig)
                 psv_result={**rr,"Inlet_Rule_Pass":passed,"Inlet_Drop_Pct":pct}
@@ -1271,6 +1582,8 @@ elif page == "PSV Engineering":
     if psv_result is not None:
         st.session_state["psv_last"]={"name":case_name,"service":service,"result":psv_result}
     last=st.session_state.get("psv_last")
+    if last and last.get("service") != service:
+        last = None
     if last:
         st.subheader(f"Latest Result — {last['name']}")
         r=last["result"]
@@ -1299,6 +1612,7 @@ elif page == "PSV Engineering":
 
 else:
     page_header("About / Method", "Application scope, calculation engines, and deployment notes.")
+    st.info("v1.4.1: previous calculation outputs are invalidated before every new sizing run, so a revised or failed case cannot keep showing the old result.")
     st.markdown(f"""
 ### {APP_TITLE}
 **{APP_VERSION}**  

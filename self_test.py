@@ -1,5 +1,5 @@
 """Deployment + code-audit regression checks."""
-import AGA3, aga8_detail, electrical_engine
+import AGA3, aga7_engine, aga8_detail, electrical_engine
 from psv_engine.gas_relief import calculate_gas_relief_area
 from psv_engine.liquid_relief import calculate_liquid_relief_area
 from psv_engine.unit_converter import barg_to_psia, kg_h_to_lb_h, c_to_rankine
@@ -39,13 +39,18 @@ assert abs(l['Kv']-0.982) < 0.002
 assert abs(l['Required_Area_Final_sqin']-4.84) < 0.02
 assert l['Selected_Orifice_Letter']=='P'
 
+# AGA 7 turbine-meter regressions
+a7 = aga7_engine.self_test()
+assert all(a7.values()), a7
+
 # Electrical + lightning regressions
 e = electrical_engine.self_test()
 assert all(e.values()), e
 
 print(f"AGA3: {q*0.000024:.6f} MMSCFD")
 print(f"AGA8 Z: {r['flowing']['Z']:.9f}")
+print(f"AGA7: {a7}")
 print(f"API520 gas example area: {g['Required_Area_sqin']:.4f} in2 -> {g['Selected_Orifice_Letter']}")
 print(f"API520 liquid example area: {l['Required_Area_Final_sqin']:.4f} in2 -> {l['Selected_Orifice_Letter']}")
 print(f"Electrical: {e}")
-print("CORE SELF TEST PASS — AGA3 + AGA8 + API520 PSV + ELECTRICAL/LIGHTNING")
+print("CORE SELF TEST PASS — AGA3 + AGA7 + AGA8 + API520 PSV + ELECTRICAL/LIGHTNING")

@@ -1,0 +1,8 @@
+ESE Project Excel Mode
+
+Source: SEU-MRW-ELC-CAL-004_Grounding & Lightning Calculation(1).xlsx
+Sheet: PENGANGKAL PETIR
+
+The application reproduces the workbook's displayed/intended ESE workflow and default sample: Ng≈17.90, Ae=65362.50 m2, Nd≈0.584994, Nc=0.0000375, Level I, h=13 m, D=20 m, DeltaT=67 us, DeltaL=67 m, Rp≈86.7179 m.
+
+The workbook contains a reference inconsistency in its Level/D lookup formulas; the application uses the intended threshold mapping to reproduce the displayed sample and flags this explicitly in the UI. Project Excel mode is separate from NF C 17-102 standard mode.

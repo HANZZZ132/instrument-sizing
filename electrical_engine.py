@@ -346,6 +346,106 @@ def lightning_lps_earthing(
     }
 
 
+
+def ese_project_excel_method(
+    area_length_m: float = 120.0,
+    area_width_m: float = 110.0,
+    lightning_rod_height_m: float = 25.0,
+    thunder_days_td: float = 127.0,
+    c1_environment: float = 0.5,
+    c2_building: float = 2.0,
+    c3_building: float = 4.0,
+    c4_building: float = 1.0,
+    c5_building: float = 5.0,
+    highest_building_height_m: float = 12.5,
+    tracer_speed_m_s: float = 1_000_000.0,
+    delta_t_s: float = 67e-6,
+    height_offset_m: float = 0.5,
+) -> Dict[str, float | str | bool]:
+    """Reproduce the project Excel ESE calculation shown on sheet PENGANGKAL PETIR.
+
+    Source workbook logic (display/intended logic):
+      Total coefficient = C2*C3*C4*C5
+      Ng = 0.04*Td^1.26
+      Ae = a*b + 6*H*(a+b) + 9*3.14*H^2
+      Nd = Ng*Ae*C1*1e-6
+      Nc = 1.5e-3/TotalCoefficient
+      Efficiency = 1 - Nc/Nd
+      Protection level (intended thresholds):
+          I >= 0.98; II >= 0.95; III >= 0.90; IV < 0.90
+      h = H - highest_building_height + 0.5
+      D = 20/30/45/60 m for Levels I/II/III/IV
+      DeltaL = V*DeltaT
+      Rp = sqrt[h*(2D-h) + DeltaL*(2D+DeltaL)]
+
+    The workbook cells G22/G30 contain an internal reference inconsistency
+    (G22 returns text while G30 compares it against numeric efficiencies).
+    This implementation follows the displayed/intended mapping so the shown
+    workbook case reproduces Rp = 86.7179335547 m.
+
+    NOTE: This is a project-workbook reproduction mode. The workbook default
+    DeltaT = 67 microseconds differs from the separate NF C 17-102 mode in this
+    application, which retains its own standard-specific limits.
+    """
+    a=float(area_length_m); b=float(area_width_m); H=float(lightning_rod_height_m)
+    Td=float(thunder_days_td)
+    C1=float(c1_environment); C2=float(c2_building); C3=float(c3_building); C4=float(c4_building); C5=float(c5_building)
+    hb=float(highest_building_height_m); V=float(tracer_speed_m_s); dt=float(delta_t_s); off=float(height_offset_m)
+    if min(a,b,H,Td,C1,C2,C3,C4,C5,V) <= 0:
+        raise ValueError('Area, lightning height, Td, coefficients and tracer speed must be > 0.')
+    if hb < 0:
+        raise ValueError('Highest building height cannot be negative.')
+    if dt < 0:
+        raise ValueError('DeltaT cannot be negative.')
+
+    coeff_total = C2*C3*C4*C5
+    ng = 0.04*(Td**1.26)
+    # Match the workbook exactly: it uses 3.14, not math.pi, in Ae.
+    ae = (a*b) + (6.0*H*(a+b)) + (9.0*3.14*(H**2))
+    nd = ng*ae*C1*1e-6
+    nc = 1.5e-3/coeff_total
+    if nd <= 0:
+        raise ValueError('Calculated Nd must be > 0.')
+    efficiency = 1.0 - (nc/nd)
+
+    if efficiency >= 0.98:
+        level='I'
+    elif efficiency >= 0.95:
+        level='II'
+    elif efficiency >= 0.90:
+        level='III'
+    else:
+        level='IV'
+    d_map={'I':20.0,'II':30.0,'III':45.0,'IV':60.0}
+    D=d_map[level]
+
+    h = H - hb + off
+    if h <= 0:
+        raise ValueError('Calculated height difference h must be > 0 m. Check lightning rod and building heights.')
+    delta_l = V*dt
+    radicand = h*(2.0*D-h) + delta_l*(2.0*D+delta_l)
+    if radicand < 0:
+        raise ValueError('Project Excel ESE radius equation produced a negative radicand.')
+    rp=math.sqrt(radicand)
+
+    return {
+        'Area_Length_a_m':a,'Area_Width_b_m':b,'Lightning_Rod_Height_m':H,
+        'Thunder_Days_Td':Td,'C1_Environment':C1,'C2':C2,'C3':C3,'C4':C4,'C5':C5,
+        'Total_Coefficient_C2xC3xC4xC5':coeff_total,
+        'Ng_per_km2_year':ng,'Protected_Area_Ae_m2':ae,'Nd_strikes_per_year':nd,
+        'Nc':nc,'Efficiency':efficiency,'Protection_Level':level,'Level_Area_D_m':D,
+        'Highest_Building_Height_m':hb,'Height_Offset_m':off,'Height_Difference_h_m':h,
+        'Tracer_Speed_m_s':V,'DeltaT_s':dt,'DeltaT_us':dt*1e6,'DeltaL_m':delta_l,
+        'Rp_m':rp,'Protected_Circular_Area_m2':math.pi*rp*rp,
+        'Workbook_Display_Match': abs(rp-86.7179335547152)<1e-9 if (
+            abs(a-120)<1e-12 and abs(b-110)<1e-12 and abs(H-25)<1e-12 and abs(Td-127)<1e-12 and
+            abs(C1-.5)<1e-12 and abs(C2-2)<1e-12 and abs(C3-4)<1e-12 and abs(C4-1)<1e-12 and abs(C5-5)<1e-12 and
+            abs(hb-12.5)<1e-12 and abs(V-1e6)<1e-6 and abs(dt-67e-6)<1e-12
+        ) else False,
+        'Method':'Project Excel — PENGANGKAL PETIR / Early Streamer Emission',
+        'Formula_Note':'Workbook-aligned calculation; separate from the NF C 17-102 standard-mode calculator.'
+    }
+
 def nfpa780_rolling_sphere_2000(
     higher_height_m: float,
     lower_protected_height_m: float = 0.0,
@@ -427,9 +527,18 @@ def self_test() -> Dict[str, bool]:
     lightning_ok = abs(lps["Rg_ohm"] - 2.33215259516) < 1e-8 and lps["Acceptable"]
     ese = ese_protection_radius_nfc17102("I", 60.0, 5.0)
     ese_ok = abs(ese["Rp_m"] - math.sqrt(6175.0)) < 1e-9
+    ese_xls = ese_project_excel_method()
+    ese_xls_ok = (
+        abs(ese_xls["Ng_per_km2_year"] - 17.899985522896028) < 1e-9
+        and abs(ese_xls["Protected_Area_Ae_m2"] - 65362.5) < 1e-9
+        and abs(ese_xls["Nd_strikes_per_year"] - 0.5849939018701458) < 1e-10
+        and abs(ese_xls["Nc"] - 0.0000375) < 1e-12
+        and ese_xls["Protection_Level"] == "I"
+        and abs(ese_xls["Rp_m"] - 86.7179335547152) < 1e-9
+    )
     nfpa = nfpa780_rolling_sphere_2000(7.62, 0.0)  # 25 ft higher point to grade
     nfpa_ok = abs(nfpa["Horizontal_Protected_Distance_ft"] - math.sqrt(25.0 * 275.0)) < 1e-6
-    return {"cable_sample": cable_ok, "ground_conductor_sample": conductor_ok, "step_touch_sample": step_ok, "lightning_lps_sample": lightning_ok, "ese_radius_sample": ese_ok, "nfpa780_rolling_sphere_sample": nfpa_ok}
+    return {"cable_sample": cable_ok, "ground_conductor_sample": conductor_ok, "step_touch_sample": step_ok, "lightning_lps_sample": lightning_ok, "ese_radius_sample": ese_ok, "ese_project_excel_sample": ese_xls_ok, "nfpa780_rolling_sphere_sample": nfpa_ok}
 
 
 def ese_protection_radius_nfc17102(

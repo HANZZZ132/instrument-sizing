@@ -102,3 +102,21 @@ Key engineering corrections in this release:
 - API 521 fire environment-factor presets corrected.
 - Thermal-expansion output labeled as volumetric flow.
 - NFPA 780 traditional rolling-sphere calculator added separately from NF C 17-102 ESE.
+
+
+## Web 1.3.1 — ESE Project Excel aligned
+Electrical > Lightning > ESE now opens with a Project Excel Method based on the uploaded PENGANGKAL PETIR sheet and retains NF C 17-102 as a separate standard-mode tab.
+
+## AGA 7 module (v1.4.0)
+The Instrument workspace now includes **AGA 7 — Turbine Meter** for Appendix-B base/flowing volume conversion, project workbook flow-range reproduction, AGA 8 Z-ratio transfer, and transparent G-rating screening. The original password-protected workbook is not redistributed with the application.
+
+
+## v1.4.1 — New Sizing / stale-result fix
+Previous results are cleared before each new calculation submit. Failed validation no longer leaves the prior case visible. Results are also isolated across AGA 3 modes, control-valve services, cable modes, and PSV services. A sidebar **New Sizing / Clear Result** button clears outputs without deleting current input values.
+
+
+## v1.4.2 — automatic stale-result invalidation
+Input widgets now run outside Streamlit forms. Editing an input triggers a rerun and automatically
+removes the previous displayed result for the active calculator. The user does not need to press a
+Clear Result button. A new result appears only after Calculate is pressed again. Live calculators
+(such as AGA 7 / ESE modes where applicable) continue to recalculate from current inputs.

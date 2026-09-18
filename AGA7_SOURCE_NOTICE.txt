@@ -1,0 +1,22 @@
+AGA 7 TURBINE METER MODULE — SOURCE / METHOD NOTICE
+
+Calculation basis:
+- AGA Report No. 7, Measurement of Natural Gas by Turbine Meters, Appendix B.
+- The base/flowing volumetric conversion uses absolute pressure, absolute temperature,
+  and compressibility ratio in accordance with the Appendix B gas-law relationship.
+- AGA 7 states that turbine-meter operating flow range at the applicable pressures is to
+  be provided by the meter manufacturer. Therefore the G-rating table in this software is
+  a screening aid only and is not presented as an AGA 7-mandated sizing table.
+
+Project workbook reference:
+- "Cari Meter Turbin(2).xlsx" was used to reproduce the user's project workflow and
+  legacy calculation examples.
+- The workbook uses 273 rather than 273.15 for Celsius-to-Kelvin conversion. The web
+  module therefore provides an explicit "Legacy Excel match" option; AGA 7 standard
+  mode uses 273.15.
+- The workbook's G-size recommendation cells contain inconsistent / corrupted logic, so
+  that formula is NOT copied as authoritative. The software instead provides a transparent
+  screening table plus a vendor-verification warning.
+- The workbook flange-class thresholds are reproduced only as an optional project
+  screening aid and are not a substitute for ASME B16.5 / vendor pressure-temperature
+  rating verification.
