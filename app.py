@@ -25,7 +25,7 @@ from psv_engine.unit_converter import (
 )
 
 APP_TITLE = "Instrument Sizing"
-APP_VERSION = "Web 1.4.2 · Auto-Clear Results"
+APP_VERSION = "Web 1.4.3 · AGA 7 Calculate"
 BASE_DIR = Path(__file__).resolve().parent
 INSTRUMENT_HERO_IMAGE = BASE_DIR / "assets" / "instrument_workspace_hero.png"
 ELECTRICAL_HERO_IMAGE = BASE_DIR / "assets" / "electrical_workspace_hero.png"
@@ -224,7 +224,7 @@ def _default(key, value):
 
 
 CALC_RESULT_KEYS = [
-    "aga3_last", "aga3_last_mode", "aga8_last", "cv_last", "cv_last_service",
+    "aga3_last", "aga3_last_mode", "aga7_range_last", "aga7_single_last", "aga8_last", "cv_last", "cv_last_service",
     "electrical_last", "electrical_candidates", "electrical_cb_i2t", "electrical_last_mode",
     "ground_conductor_last", "step_touch_last", "grid_resistance_last",
     "lightning_lps_last", "nfpa780_last", "psv_last"
@@ -232,6 +232,7 @@ CALC_RESULT_KEYS = [
 
 PAGE_RESULT_KEYS = {
     "AGA 3 — Orifice Flow": ["aga3_last", "aga3_last_mode"],
+    "AGA 7 — Turbine Meter": ["aga7_range_last", "aga7_single_last"],
     "AGA 8 — Gas Properties": ["aga8_last"],
     "Control Valve Sizing": ["cv_last", "cv_last_service"],
     "Electrical Sizing": [
@@ -274,7 +275,7 @@ def _install_auto_invalidation():
         return
 
     widget_methods = (
-        "number_input", "selectbox", "checkbox", "text_input",
+        "number_input", "selectbox", "checkbox", "text_input", "radio",
         "segmented_control", "data_editor", "multiselect", "slider",
     )
 
@@ -600,6 +601,7 @@ elif page == "AGA 7 — Turbine Meter":
             if st.button("Use latest AGA 8 Zf/Zb", key="a7_use_a8", use_container_width=True):
                 r8 = st.session_state.get("aga8_last")
                 if r8:
+                    begin_new_result("aga7_range_last", "aga7_single_last")
                     st.session_state["a7_zratio"] = r8["flowing"]["Z"] / r8["base"]["Z"]
                     st.success("Zf/Zb transferred from the latest AGA 8 calculation.")
                     st.rerun()
@@ -610,23 +612,51 @@ elif page == "AGA 7 — Turbine Meter":
                 "Flow-range pairing",
                 ["Project paired conditions", "Conservative envelope"],
                 horizontal=True,
+                key="a7_pairing",
                 help="Project paired: Qmin@Pmin and Qmax@Pmax. Conservative envelope: Qmin@Pmax and Qmax@Pmin.",
             )
-            legacy = st.checkbox("Legacy Excel match: use 273.0 instead of 273.15 for °C → K", value=False)
-            continuous_pct = st.slider("Continuous-use target (% of screening Qmax)", min_value=50, max_value=100, value=int(st.session_state["a7_cont"]), step=5)
+            legacy = st.checkbox("Legacy Excel match: use 273.0 instead of 273.15 for °C → K", value=False, key="a7_legacy_range")
+            continuous_pct = st.slider("Continuous-use target (% of screening Qmax)", min_value=50, max_value=100, value=int(st.session_state["a7_cont"]), step=5, key="a7_cont_slider")
+
+            calculate_range = st.button(
+                "Calculate Flow Range / G-Size",
+                key="a7_calculate_range",
+                type="primary",
+                use_container_width=True,
+            )
+
+            if calculate_range:
+                begin_new_result("aga7_range_last")
+                try:
+                    rr = aga7_engine.calculate_flow_range(
+                        qmin, qmax, pmin, pmax,
+                        base_pressure_bar_abs=pb,
+                        flowing_temp_c=tf, base_temp_c=tb,
+                        zf_over_zb=zratio, atmospheric_bar_abs=patm,
+                        pairing="conservative" if basis == "Conservative envelope" else "paired",
+                        legacy_excel_temperature_offset=legacy,
+                    )
+                    rec = aga7_engine.recommend_g_rating(rr["Actual_Max_m3_h"], continuous_pct/100.0)
+                    flange = aga7_engine.workbook_flange_screening(pmax)
+                    st.session_state["aga7_range_last"] = {
+                        "rr": rr,
+                        "rec": rec,
+                        "flange": flange,
+                        "continuous_pct": continuous_pct,
+                        "legacy": legacy,
+                    }
+                except Exception as e:
+                    st.error(str(e))
 
         with right:
-            try:
-                rr = aga7_engine.calculate_flow_range(
-                    qmin, qmax, pmin, pmax,
-                    base_pressure_bar_abs=pb,
-                    flowing_temp_c=tf, base_temp_c=tb,
-                    zf_over_zb=zratio, atmospheric_bar_abs=patm,
-                    pairing="conservative" if basis == "Conservative envelope" else "paired",
-                    legacy_excel_temperature_offset=legacy,
-                )
-                rec = aga7_engine.recommend_g_rating(rr["Actual_Max_m3_h"], continuous_pct/100.0)
-                flange = aga7_engine.workbook_flange_screening(pmax)
+            result = st.session_state.get("aga7_range_last")
+            if result is None:
+                st.info("Masukkan / ubah input di kiri, lalu klik **Calculate Flow Range / G-Size** untuk menampilkan hasil.")
+            else:
+                rr = result["rr"]
+                rec = result["rec"]
+                flange = result["flange"]
+                saved_continuous_pct = result["continuous_pct"]
                 m1,m2,m3 = st.columns(3)
                 m1.metric("Actual line flow min", f"{rr['Actual_Min_m3_h']:.3f} m³/h")
                 m2.metric("Actual line flow max", f"{rr['Actual_Max_m3_h']:.3f} m³/h")
@@ -643,15 +673,14 @@ elif page == "AGA 7 — Turbine Meter":
                     st.write(f"**{flange}**")
                     st.caption("This reproduces the workbook's simple pressure threshold screening only. Verify material, temperature, flange standard and vendor MAOP separately.")
 
-                table = pd.DataFrame(aga7_engine.g_rating_table(continuous_pct/100.0))
+                table = pd.DataFrame(aga7_engine.g_rating_table(saved_continuous_pct/100.0))
                 st.dataframe(table, hide_index=True, use_container_width=True)
-            except Exception as e:
-                st.error(str(e))
 
         if legacy:
             st.caption("Legacy Excel regression: with Qmin=515 Sm³/h @ 1 barg and Qmax=1283 Sm³/h @ 4 barg, T=32°C, Tb=15.555556°C, Pb=1.01325 bar abs and Zf/Zb=1, the project paired results are approximately 273.966 and 274.091 m³/h.")
 
     with mode2:
+        st.markdown("##### Single base / line-flow conversion")
         direction = st.segmented_control("Conversion direction", ["Base → Flowing", "Flowing → Base"], default="Base → Flowing", key="a7_direction")
         a,b,c = st.columns(3)
         if direction == "Base → Flowing":
@@ -666,16 +695,38 @@ elif page == "AGA 7 — Turbine Meter":
         pb2 = c.number_input("Pb (bar abs)", min_value=0.000001, key="a7_pb_single", value=float(st.session_state["a7_pb"]))
         pa2 = d.number_input("Pa (bar abs)", min_value=0.000001, key="a7_pa_single", value=float(st.session_state["a7_patm"]))
         zr2 = e.number_input("Zf/Zb", min_value=0.000001, key="a7_zr_single", value=float(st.session_state["a7_zratio"]), format="%.8f")
-        try:
-            if direction == "Base → Flowing":
-                sr = aga7_engine.flowing_rate_from_base(qsingle, pgsingle, pb2, tf2, tb2, zr2, pa2, legacy2)
-                st.metric("Flowing / line flow Qf", f"{sr['Q_flowing_m3_h']:.6f} m³/h")
-            else:
-                sr = aga7_engine.base_rate_from_flowing(qsingle, pgsingle, pb2, tf2, tb2, zr2, pa2, legacy2)
-                st.metric("Base flow Qb", f"{sr['Q_base_sm3_h']:.6f} Sm³/h")
-            st.dataframe(pd.DataFrame([[k,v] for k,v in sr.items()], columns=["Parameter","Value"]), hide_index=True, use_container_width=True)
-        except Exception as e:
-            st.error(str(e))
+
+        calculate_single = st.button(
+            "Calculate Conversion",
+            key="a7_calculate_single",
+            type="primary",
+            use_container_width=True,
+        )
+        if calculate_single:
+            begin_new_result("aga7_single_last")
+            try:
+                if direction == "Base → Flowing":
+                    sr = aga7_engine.flowing_rate_from_base(qsingle, pgsingle, pb2, tf2, tb2, zr2, pa2, legacy2)
+                    result_label = "Flowing / line flow Qf"
+                    result_value = f"{sr['Q_flowing_m3_h']:.6f} m³/h"
+                else:
+                    sr = aga7_engine.base_rate_from_flowing(qsingle, pgsingle, pb2, tf2, tb2, zr2, pa2, legacy2)
+                    result_label = "Base flow Qb"
+                    result_value = f"{sr['Q_base_sm3_h']:.6f} Sm³/h"
+                st.session_state["aga7_single_last"] = {
+                    "sr": sr,
+                    "label": result_label,
+                    "value": result_value,
+                }
+            except Exception as e:
+                st.error(str(e))
+
+        single_result = st.session_state.get("aga7_single_last")
+        if single_result is None:
+            st.info("Ubah input bila perlu, lalu klik **Calculate Conversion**.")
+        else:
+            st.metric(single_result["label"], single_result["value"])
+            st.dataframe(pd.DataFrame([[k,v] for k,v in single_result["sr"].items()], columns=["Parameter","Value"]), hide_index=True, use_container_width=True)
 
     with mode3:
         st.markdown("##### AGA Report No. 7 basis")
@@ -695,7 +746,6 @@ The project workbook workflow is retained as a selectable legacy mode, but its G
         st.markdown("##### Project Excel source")
         st.code("Cari Meter Turbin(2).xlsx  |  password supplied by user during analysis  |  source not redistributed", language="text")
         st.caption("The password is not stored in the application package.")
-
 
 elif page == "AGA 3 — Orifice Flow":
     page_header("AGA 3 — Orifice Flow", "Calculate base flow from a known bore, or solve the reference orifice diameter for a target base flow.")
